@@ -1,8 +1,25 @@
-<section class="list" id="list-{{ list.id }}" data-list-id="{{ list.id }}">
+<section class="list" id="list-{{ list.id }}" data-list-id="{{ list.id }}" tabindex="0"
+         x-data="boardList" @click.outside="close({ refocus: false })">
   <h2 class="list-title">{{ list.title }}</h2>
-  <ol class="cards" id="cards-{{ list.id }}" data-list-id="{{ list.id }}">
+  <ol class="cards" id="cards-{{ list.id }}" data-list-id="{{ list.id }}" x-ref="cards">
     {% for card in list.cards %}
       {% include "_card.html" %}
     {% endfor %}
   </ol>
+
+  {# Stays in the page between cards so focus and anything typed mid-request survive. #}
+  <form class="composer" x-ref="form" x-show="composing" x-cloak
+        hx-post="/cards" hx-target="#cards-{{ list.id }}" hx-swap="beforeend">
+    <input type="hidden" name="list_id" value="{{ list.id }}">
+    <textarea name="title" x-ref="title" rows="2" required
+              placeholder="Card title" aria-label="New card title"
+              @keydown="onKeydown"></textarea>
+    <div class="composer-actions">
+      <button type="submit" class="primary">Add card</button>
+      <button type="button" @click="close()">Cancel</button>
+    </div>
+  </form>
+  <button type="button" class="add-card" x-show="!composing" @click="open()">
+    + Add a card <kbd>n</kbd>
+  </button>
 </section>

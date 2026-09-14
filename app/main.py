@@ -1,8 +1,9 @@
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -70,3 +71,32 @@ def board_view(
     return templates.TemplateResponse(
         request, "board.html", {"board": board, "lists": load_lists(conn, board_id)}
     )
+
+
+@app.post("/cards", response_class=HTMLResponse)
+def create_card(
+    request: Request,
+    list_id: Annotated[int, Form()],
+    title: Annotated[str, Form()],
+    conn: sqlite3.Connection = Depends(db.get_db),
+):
+    """Append a card to the bottom of a list. Returns just the new card's HTML."""
+    title = " ".join(title.split())  # titles are one line; collapse pasted newlines
+    if not title:
+        raise HTTPException(status_code=400, detail="Card title can't be empty")
+
+    with conn:
+        lst = conn.execute("SELECT board_id FROM lists WHERE id = ?", (list_id,)).fetchone()
+        if lst is None:
+            raise HTTPException(status_code=404, detail="This list was deleted")
+        card_id = conn.execute(
+            """
+            INSERT INTO cards (list_id, title, position)
+            VALUES (?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM cards WHERE list_id = ?))
+            """,
+            (list_id, title, list_id),
+        ).lastrowid
+        db.bump_version(conn, lst["board_id"])
+
+    card = conn.execute("SELECT id, title FROM cards WHERE id = ?", (card_id,)).fetchone()
+    return templates.TemplateResponse(request, "_card.html", {"card": card})

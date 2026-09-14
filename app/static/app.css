@@ -10,6 +10,8 @@
 
 * { box-sizing: border-box; }
 
+[x-cloak] { display: none !important; }
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -94,10 +96,81 @@ body {
   min-height: 0.5rem; /* keeps empty lists a usable drop target */
   overflow-y: auto;
 }
+.list:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
 .card {
   padding: 0.5rem 0.75rem;
   background: var(--card-bg);
   border-radius: 6px;
   box-shadow: 0 1px 1px rgb(9 30 66 / 0.25);
   overflow-wrap: anywhere;
+}
+.card:focus-visible { outline: 2px solid #0c66e4; }
+
+/* ---- Card composer ---- */
+
+.composer { margin-top: 0.5rem; }
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 3.5em;
+  field-sizing: content; /* grows with the text where supported */
+  resize: none;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 6px;
+  box-shadow: 0 1px 1px rgb(9 30 66 / 0.25);
+  font: inherit;
+  color: inherit;
+}
+.composer textarea:focus { outline: 2px solid #0c66e4; }
+.composer-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+button {
+  padding: 0.375rem 0.75rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+button:hover { background: rgb(9 30 66 / 0.08); }
+button.primary { background: #0c66e4; color: #fff; }
+button.primary:hover { background: #0055cc; }
+
+.add-card {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--muted);
+  text-align: left;
+}
+kbd {
+  padding: 0 0.35em;
+  border: 1px solid rgb(9 30 66 / 0.2);
+  border-radius: 3px;
+  font: 0.75rem ui-monospace, monospace;
+}
+
+/* ---- Error messages ---- */
+
+#flash {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 2rem);
+  padding: 0.625rem 1rem;
+  border-radius: 6px;
+  background: #ae2e24;
+  color: #fff;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
 }

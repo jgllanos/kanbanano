@@ -5,8 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Kanbanano{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css">
+  {# app.js must run before Alpine so its alpine:init listener is registered in time. #}
+  <script src="/static/vendor/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  <script src="/static/vendor/alpine.min.js" defer></script>
 </head>
 <body>
   {% block body %}{% endblock %}
+  <div id="flash" role="alert" hidden></div>
 </body>
 </html>
