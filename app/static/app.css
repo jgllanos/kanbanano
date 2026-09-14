@@ -32,6 +32,27 @@ body {
 .brand { font-weight: 700; color: inherit; text-decoration: none; }
 .board-title { margin: 0; font-size: 1.1rem; }
 
+/* "I am" picker and "Assigned to me" filter */
+.identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+.identity-picker { display: flex; align-items: center; gap: 0.375rem; }
+.identity select {
+  padding: 0.25rem 0.375rem;
+  border: none;
+  border-radius: 4px;
+  font: inherit;
+}
+.filter-mine { background: rgb(255 255 255 / 0.2); }
+.filter-mine:hover { background: rgb(255 255 255 / 0.3); }
+.filter-mine[aria-pressed="true"] { background: #fff; color: var(--text); }
+.filter-mine:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ---- Board index ---- */
 
 .board-index {
@@ -168,6 +189,228 @@ kbd {
   border: 1px solid rgb(9 30 66 / 0.2);
   border-radius: 3px;
   font: 0.75rem ui-monospace, monospace;
+}
+
+button.danger { color: #ae2e24; }
+button.danger:hover { background: #ffeceb; }
+
+/* ---- Card face: labels and people ---- */
+
+.card-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.375rem;
+}
+.label-pill {
+  min-width: 2.5rem;
+  padding: 0 0.5rem;
+  border-radius: 4px;
+  background: var(--label-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+}
+.card-footer {
+  display: flex;
+  align-items: center;
+  margin-top: 0.375rem;
+  color: var(--muted);
+}
+.card-people {
+  display: flex;
+  gap: 0.125rem;
+  margin-left: auto;
+}
+.person-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 50%;
+  background: var(--label-color);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+/* ---- Card modal ---- */
+
+.card-modal {
+  width: min(640px, calc(100% - 2rem));
+  margin: 3rem auto auto;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: #f1f2f4;
+  color: var(--text);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.3);
+}
+.card-modal::backdrop { background: rgb(0 0 0 / 0.5); }
+.modal-content { padding: 1rem 1.25rem 1.25rem; }
+.modal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-context {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.modal-close { font-size: 1rem; line-height: 1; }
+.modal-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: #ffeceb;
+  color: #ae2e24;
+}
+.modal-error button { background: #fff; }
+
+.card-form textarea {
+  display: block;
+  width: 100%;
+  field-sizing: content;
+  resize: none;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+}
+.card-form .modal-title {
+  margin: 0.5rem 0 1rem -0.5rem;
+  width: calc(100% + 0.5rem);
+  background: transparent;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.card-form .modal-title:hover { background: rgb(9 30 66 / 0.06); }
+.card-form .modal-title:focus { background: #fff; }
+.card-form #card-description {
+  min-height: 6em;
+  background: #fff;
+  border-color: rgb(9 30 66 / 0.15);
+}
+.card-form textarea:focus { outline: 2px solid #0c66e4; outline-offset: -1px; }
+.field-label,
+.label-section h3 {
+  display: block;
+  margin: 0 0 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.hint {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* ---- Label and people pickers ---- */
+
+.label-section { margin-top: 1.25rem; }
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.section-action {
+  padding: 0 0.375rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.label-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.label-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid rgb(9 30 66 / 0.15);
+  background: #fff;
+}
+.label-option.is-label::before { /* color swatch while unassigned */
+  content: "";
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 3px;
+  background: var(--label-color);
+}
+.label-option.is-label[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--label-color);
+  font-weight: 600;
+}
+.label-option.is-label[aria-pressed="true"]::before { display: none; }
+.label-option.is-person { padding-left: 0.25rem; }
+.label-option.is-person .person-chip { width: 1.375rem; height: 1.375rem; font-size: 0.625rem; }
+.label-option.is-person[aria-pressed="true"] {
+  border-color: #0c66e4;
+  background: #e9f2ff;
+  font-weight: 600;
+}
+.label-add { color: var(--muted); }
+
+.label-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.label-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.label-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgb(9 30 66 / 0.1);
+}
+.label-edit:last-child { padding-bottom: 0; border-bottom: none; }
+.label-create input[type="text"],
+.label-edit input[type="text"] {
+  flex: 1 1 12rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid rgb(9 30 66 / 0.25);
+  border-radius: 4px;
+  font: inherit;
+}
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.swatch {
+  appearance: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  border-radius: 4px;
+  background: var(--label-color);
+  cursor: pointer;
+}
+.swatch:checked { outline: 2px solid #0c66e4; outline-offset: 2px; }
+.form-actions { display: flex; gap: 0.5rem; }
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
 }
 
 /* ---- Error messages ---- */

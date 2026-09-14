@@ -5,6 +5,21 @@ from pathlib import Path
 DB_PATH = Path(os.environ.get("DB_PATH", "board.db"))
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
+# The only colors labels and people can have. Light enough for dark text.
+# Colors end up in style attributes, so never store anything not in this list.
+LABEL_COLORS = {
+    "green": "#4bce97",
+    "yellow": "#f5cd47",
+    "orange": "#fea362",
+    "red": "#f87168",
+    "purple": "#9f8fef",
+    "blue": "#579dff",
+    "sky": "#6cc3e0",
+    "lime": "#94c748",
+    "pink": "#e774bb",
+    "gray": "#8590a2",
+}
+
 
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     # check_same_thread=False: FastAPI may run a sync dependency and the endpoint

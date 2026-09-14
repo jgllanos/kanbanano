@@ -1,0 +1,79 @@
+{# One of the modal's two pickers: kind "label" (colored pills) or "person" (initials chips).
+   Normal view: every option on the board as a toggle; pressed ones are on this card.
+   Edit view (`managing`): a rename/recolor/delete row per option. #}
+{% set is_people = kind == "person" %}
+{% set assigned = (card.people if is_people else card.labels) | map(attribute="id") | list %}
+{% set managing = managing and options %}
+<section class="label-section" x-data="{ adding: false, managing: {{ 'true' if managing else 'false' }} }">
+  <div class="section-heading">
+    <h3>{{ "People" if is_people else "Labels" }}</h3>
+    {% if options %}
+      <button type="button" class="section-action" @click="managing = !managing; adding = false"
+              x-text="managing ? 'Done' : 'Edit'">{{ "Done" if managing else "Edit" }}</button>
+    {% endif %}
+  </div>
+
+  <div class="label-options" x-show="!managing" {{ "x-cloak" if managing }}>
+    {% for option in options %}
+      {% set on = option.id in assigned %}
+      {# The id lets htmx put focus back on this button after the section is re-rendered. #}
+      <button type="button" id="label-option-{{ option.id }}"
+              class="label-option {{ 'is-person' if is_people else 'is-label' }}"
+              style="--label-color: {{ option.color }}" aria-pressed="{{ 'true' if on else 'false' }}"
+              {% if on %}hx-delete="/cards/{{ card.id }}/labels/{{ option.id }}"
+              {% else %}hx-post="/cards/{{ card.id }}/labels" hx-vals='{"label_id": {{ option.id }}}'{% endif %}
+              hx-target="closest .label-section" hx-swap="outerHTML">
+        {% if is_people %}<span class="person-chip">{{ option.name|initials }}</span>{% endif %}
+        {{ option.name }}
+      </button>
+    {% endfor %}
+    <button type="button" class="label-add" x-ref="addButton" x-show="!adding"
+            @click="adding = true; $nextTick(() => $refs.name.focus())">
+      + {{ "Add person" if is_people else "New label" }}
+    </button>
+  </div>
+
+  {# Escape is prevented in these forms so it closes the form, not the whole modal. #}
+  <form class="label-create" x-show="adding && !managing" x-cloak
+        hx-post="/labels" hx-target="closest .label-section" hx-swap="outerHTML"
+        @keydown.escape.prevent="adding = false; $nextTick(() => $refs.addButton.focus())">
+    <input type="hidden" name="card_id" value="{{ card.id }}">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <input type="text" name="name" x-ref="name" required maxlength="40" autocomplete="off"
+           placeholder="{{ 'Name' if is_people else 'Label name' }}"
+           aria-label="{{ 'Person name' if is_people else 'Label name' }}">
+    {% if not is_people %}{% with selected=None %}{% include "_swatches.html" %}{% endwith %}{% endif %}
+    <div class="form-actions">
+      <button type="submit" class="primary">Add</button>
+      <button type="button" @click="adding = false">Cancel</button>
+    </div>
+  </form>
+
+  <div class="label-manage" x-show="managing" {{ "x-cloak" if not managing }}
+       @keydown.escape.prevent="managing = false">
+    {% for option in options %}
+      <form class="label-edit" hx-patch="/labels/{{ option.id }}"
+            hx-target="closest .label-section" hx-swap="outerHTML">
+        <input type="hidden" name="card_id" value="{{ card.id }}">
+        <input type="text" name="name" value="{{ option.name }}" required maxlength="40"
+               autocomplete="off" aria-label="Name">
+        {% with selected=option.color %}{% include "_swatches.html" %}{% endwith %}
+        <div class="form-actions">
+          <button type="submit" class="primary">Save</button>
+          {# hx-params="none": don't send this form's fields along with the delete. #}
+          <button type="button" class="danger" hx-delete="/labels/{{ option.id }}?card_id={{ card.id }}"
+                  hx-params="none" hx-target="closest .label-section" hx-swap="outerHTML"
+                  hx-confirm="Delete “{{ option.name }}”? It will be removed from every card.">
+            Delete
+          </button>
+        </div>
+      </form>
+    {% endfor %}
+  </div>
+</section>
+
+{# Out-of-band updates, only present in responses to changes. #}
+{% for face in faces %}{% with card=face %}{% include "_card_face_oob.html" %}{% endwith %}{% endfor %}
+{% if refresh_identity %}
+  {% with people=options, board_id=card.board_id, oob=True %}{% include "_identity.html" %}{% endwith %}
+{% endif %}

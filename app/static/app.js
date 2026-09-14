@@ -25,7 +25,9 @@ document.addEventListener("alpine:init", () => {
       // Fires for success, HTTP errors, and network errors alike.
       form.addEventListener("htmx:afterRequest", (event) => {
         if (event.detail.successful) {
-          this.$refs.cards.lastElementChild?.scrollIntoView({ block: "nearest" });
+          const card = this.$refs.cards.lastElementChild;
+          card?.classList.add("just-added"); // exempt from the "Assigned to me" filter
+          card?.scrollIntoView({ block: "nearest" });
         } else {
           title.value = [this.submitted, title.value].filter(Boolean).join(" ");
         }
@@ -58,7 +60,107 @@ document.addEventListener("alpine:init", () => {
       }
     },
   }));
+
+  // ---- Card modal ---------------------------------------------------------
+  // GET /cards/{id} swaps a <dialog> into #modal-root, and it opens itself.
+  // Closing leaves it in place (closed) until the next card replaces it, so
+  // a save that closing set off can still finish and report back here.
+  // Errors from anything inside the modal are shown in the modal.
+
+  Alpine.data("cardModal", (cardId, listId) => ({
+    error: "",
+    canReload: false, // offer "Reload card" after a conflict
+
+    init() {
+      this.$root.showModal();
+      this.$root.addEventListener("htmx:afterRequest", (event) => this.afterRequest(event.detail));
+      this.$root.addEventListener("close", () => {
+        // The card if it still exists, otherwise its list.
+        const card = document.getElementById(`card-${cardId}`);
+        (card ?? document.getElementById(`list-${listId}`))?.focus();
+      });
+    },
+
+    afterRequest({ successful, xhr, elt }) {
+      if (successful) {
+        this.error = "";
+        if (elt === this.$refs.deleteButton) this.$root.close();
+        return;
+      }
+      // A save set off by closing the modal failed: reopen so the text isn't lost.
+      if (!this.$root.open) this.$root.showModal();
+      this.error = xhr.status ? errorMessage(xhr.status, xhr.responseText) : OFFLINE_MESSAGE;
+      this.canReload = xhr.status === 409;
+    },
+  }));
+
+  // ---- "I am" picker and "Assigned to me" filter --------------------------
+  // Who you are is a per-device preference, not a credential: a person's id
+  // per board, in localStorage. Keyed by id so renaming a person doesn't
+  // break it. The server re-renders this widget when people change; init()
+  // then restores the saved state.
+
+  Alpine.data("identity", (boardId) => ({
+    me: "",
+    mine: false,
+
+    init() {
+      const saved = storage.get(`me:${boardId}`) ?? "";
+      const stillExists = [...this.$refs.select.options].some((o) => o.value === saved);
+      this.me = stillExists ? saved : "";
+      this.mine = this.me !== "" && storage.get(`mine:${boardId}`) === "1";
+
+      this.$watch("me", (me) => {
+        storage.set(`me:${boardId}`, me);
+        if (!me) this.mine = false;
+        this.apply();
+      });
+      this.$watch("mine", (mine) => {
+        storage.set(`mine:${boardId}`, mine ? "1" : "");
+        this.apply();
+      });
+      this.apply();
+    },
+
+    apply() {
+      setMineFilter(this.mine ? this.me : null);
+    },
+  }));
 });
+
+// localStorage can be unavailable (private windows, blocked storage); then
+// preferences just don't persist.
+const storage = {
+  get(key) {
+    try {
+      return localStorage.getItem(`kanbanano:${key}`);
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(`kanbanano:${key}`, value);
+    } catch {}
+  },
+};
+
+// The filter is a generated style rule rather than a pass over the cards, so
+// it also applies to cards added or re-rendered later. Cards added with the
+// composer while it's on are exempt, so they don't vanish as you create them.
+const mineFilterStyle = document.createElement("style");
+document.head.append(mineFilterStyle);
+
+function setMineFilter(personId) {
+  const id = Number.parseInt(personId, 10); // interpolated into CSS: keep it a number
+  mineFilterStyle.textContent = Number.isInteger(id)
+    ? `.card:not(.just-added):not(:has(.person-chip[data-person-id="${id}"])) { display: none; }`
+    : "";
+}
+
+function modalOpen() {
+  return document.querySelector("#modal-root dialog[open]") !== null;
+}
 
 // ---- Keyboard shortcuts ---------------------------------------------------
 
@@ -82,7 +184,7 @@ function isTyping(el) {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "n" || event.ctrlKey || event.metaKey || event.altKey) return;
-  if (isTyping(event.target)) return;
+  if (isTyping(event.target) || modalOpen()) return;
 
   const list = currentList();
   if (!list) return;
@@ -105,8 +207,9 @@ const ARROW_MOVES = {
   ArrowRight: [1, 0],
 };
 
+// Visible cards only: the "Assigned to me" filter hides the rest.
 function cardsIn(list) {
-  return [...list.querySelectorAll(".card")];
+  return [...list.querySelectorAll(".card")].filter((card) => card.checkVisibility());
 }
 
 // Focuses the card at `index`, clamped to the last card. Falls back to the
@@ -118,7 +221,7 @@ function focusCardAt(list, index) {
 
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-  if (isTyping(event.target)) return;
+  if (isTyping(event.target) || modalOpen()) return;
 
   if (event.key === "Escape") {
     event.target.closest(".card")?.closest(".list").focus();
@@ -175,12 +278,18 @@ function errorMessage(status, body) {
   return `Something went wrong (${status})`;
 }
 
+// The card modal shows its own errors (see cardModal).
+const inModal = (event) => event.detail.elt.closest("#modal-root") !== null;
+
 document.addEventListener("htmx:responseError", (event) => {
+  if (inModal(event)) return;
   const { status, responseText } = event.detail.xhr;
   flash(errorMessage(status, responseText));
 });
 
-document.addEventListener("htmx:sendError", () => flash(OFFLINE_MESSAGE));
+document.addEventListener("htmx:sendError", (event) => {
+  if (!inModal(event)) flash(OFFLINE_MESSAGE);
+});
 
 // ---- Drag and drop --------------------------------------------------------
 // SortableJS moves the element in the DOM itself; we then post the full new

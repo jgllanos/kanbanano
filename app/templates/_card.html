@@ -1,1 +1,4 @@
-<li class="card" id="card-{{ card.id }}" data-card-id="{{ card.id }}" tabindex="-1">{{ card.title }}</li>
+<li class="card" id="card-{{ card.id }}" data-card-id="{{ card.id }}" tabindex="-1"
+    hx-get="/cards/{{ card.id }}" hx-target="#modal-root" hx-trigger="click, keydown[key=='Enter']">
+  {%- include "_card_face.html" -%}
+</li>

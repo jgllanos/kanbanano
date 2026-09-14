@@ -1,0 +1,9 @@
+{# Color radio buttons. `selected` is a hex color, or unset to preselect the first.
+   Radios group per form, so several of these can share a page. #}
+<div class="swatches" role="radiogroup" aria-label="Color">
+  {% for color_name, hex in LABEL_COLORS.items() %}
+    <input type="radio" name="color" value="{{ hex }}" class="swatch" style="--label-color: {{ hex }}"
+           aria-label="{{ color_name }}" title="{{ color_name | capitalize }}"
+           {{ "checked" if hex == selected or (not selected and loop.first) }}>
+  {% endfor %}
+</div>

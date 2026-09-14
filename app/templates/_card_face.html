@@ -1,0 +1,23 @@
+{# Everything inside a card's <li>. Saves swap just this, so the <li> keeps focus. #}
+{% if card.labels %}
+  <div class="card-labels">
+    {% for label in card.labels %}
+      <span class="label-pill" style="--label-color: {{ label.color }}">{{ label.name }}</span>
+    {% endfor %}
+  </div>
+{% endif %}
+<span class="card-title">{{ card.title }}</span>
+{% if card.has_description or card.people %}
+  <div class="card-footer">
+    {% if card.has_description %}
+      <span class="card-badge" title="This card has a description" aria-label="Has a description">≡</span>
+    {% endif %}
+    <span class="card-people">
+      {% for person in card.people %}
+        {# data-person-id is what the "Assigned to me" filter matches on. #}
+        <span class="person-chip" style="--label-color: {{ person.color }}" title="{{ person.name }}"
+              data-person-id="{{ person.id }}">{{ person.name|initials }}</span>
+      {% endfor %}
+    </span>
+  </div>
+{% endif %}

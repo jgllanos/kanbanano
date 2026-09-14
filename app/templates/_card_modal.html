@@ -1,0 +1,40 @@
+<dialog class="card-modal" x-data="cardModal({{ card.id }}, {{ card.list_id }})"
+        @mousedown.self="$root.close()" aria-labelledby="card-modal-title">
+  <div class="modal-content">
+    <div class="modal-top">
+      <p class="modal-context">In list <strong>{{ card.list_title }}</strong></p>
+      <button type="button" class="modal-close" aria-label="Close" @click="$root.close()">✕</button>
+    </div>
+
+    <div class="modal-error" role="alert" x-show="error" x-cloak>
+      <span x-text="error"></span>
+      <button type="button" x-show="canReload" hx-get="/cards/{{ card.id }}" hx-target="#modal-root">
+        Reload card
+      </button>
+    </div>
+
+    {# Saves on `change`, i.e. whenever a field loses focus after an edit. That
+       includes the modal closing, so closing mid-edit saves rather than discards. #}
+    <form class="card-form" hx-patch="/cards/{{ card.id }}" hx-trigger="change" hx-swap="none">
+      <input type="hidden" id="card-updated-at" name="updated_at" value="{{ card.updated_at }}">
+      <textarea name="title" id="card-modal-title" class="modal-title" rows="1" required
+                aria-label="Card title" @keydown.enter.prevent="$el.blur()">{{ card.title }}</textarea>
+
+      <label class="field-label" for="card-description">Description</label>
+      <textarea name="description" id="card-description" rows="4" placeholder="Add more detail…"
+                @keydown.ctrl.enter="$el.blur()" @keydown.meta.enter="$el.blur()">{{ card.description }}</textarea>
+      <p class="hint">Saves when you leave the field. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> saves now.</p>
+    </form>
+
+    {% with kind="label", options=options.label %}{% include "_label_section.html" %}{% endwith %}
+    {% with kind="person", options=options.person %}{% include "_label_section.html" %}{% endwith %}
+
+    <div class="modal-footer">
+      <button type="button" class="danger" x-ref="deleteButton"
+              hx-delete="/cards/{{ card.id }}" hx-target="#card-{{ card.id }}" hx-swap="delete"
+              hx-confirm="Delete this card? This can't be undone.">
+        Delete card
+      </button>
+    </div>
+  </div>
+</dialog>

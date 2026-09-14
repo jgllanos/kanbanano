@@ -1,0 +1,3 @@
+{# PATCH /cards/{id} response: nothing in the modal is replaced, only updated alongside it. #}
+{% include "_card_face_oob.html" %}
+<input type="hidden" id="card-updated-at" name="updated_at" value="{{ card.updated_at }}" hx-swap-oob="true">

@@ -7,6 +7,7 @@
   <header class="topbar">
     <a href="/" class="brand">Kanbanano</a>
     <h1 class="board-title">{{ board.title }}</h1>
+    {% with board_id=board.id %}{% include "_identity.html" %}{% endwith %}
   </header>
 
   {# Polling swaps only #lists-container. Keep anything with local UI state outside it. #}
