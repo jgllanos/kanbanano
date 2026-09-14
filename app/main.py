@@ -1,4 +1,6 @@
+import json
 import sqlite3
+from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -100,3 +102,106 @@ def create_card(
 
     card = conn.execute("SELECT id, title FROM cards WHERE id = ?", (card_id,)).fetchone()
     return templates.TemplateResponse(request, "_card.html", {"card": card})
+
+
+def rewrite_positions(
+    conn: sqlite3.Connection,
+    table: str,
+    parent_column: str,
+    parent_id: int,
+    ordered_ids: list[int],
+    exclude: Iterable[int] = (),
+) -> None:
+    """Renumber a parent's children 0, 1, 2…, with `ordered_ids` first, in that order.
+
+    `ordered_ids` are moved under the parent if they aren't there already; the
+    caller must have checked they belong to the same board. Children the client
+    didn't know about (e.g. added by someone else since its page loaded) follow
+    in their existing order, so positions stay contiguous. `exclude` holds ids
+    being placed under a different parent in the same request.
+
+    All position writes for drags go through here. Moves deliberately leave
+    cards.updated_at alone: it's the conflict token for description edits.
+    """
+    skip = {*ordered_ids, *exclude}
+    leftovers = [
+        row["id"]
+        for row in conn.execute(
+            f"SELECT id FROM {table} WHERE {parent_column} = ? ORDER BY position, id",
+            (parent_id,),
+        )
+        if row["id"] not in skip
+    ]
+    conn.executemany(
+        f"UPDATE {table} SET {parent_column} = ?, position = ? WHERE id = ?",
+        [(parent_id, position, id_) for position, id_ in enumerate(ordered_ids + leftovers)],
+    )
+
+
+@app.post("/cards/reorder", status_code=204)
+def reorder_cards(
+    list_id: Annotated[int, Form()],
+    card_ids: Annotated[list[int], Form()],
+    from_list_id: Annotated[int | None, Form()] = None,
+    from_card_ids: Annotated[list[int], Form()] = [],
+    conn: sqlite3.Connection = Depends(db.get_db),
+):
+    """Save card order after a drag.
+
+    Takes the full card order of the list the card was dropped in and, for a
+    move between lists, the full order of the list it left (possibly empty).
+    """
+    orders = {list_id: card_ids}
+    if from_list_id is not None and from_list_id != list_id:
+        orders[from_list_id] = from_card_ids
+
+    with conn:
+        lists = conn.execute(
+            "SELECT id, board_id FROM lists WHERE id IN (SELECT value FROM json_each(?))",
+            (json.dumps(list(orders)),),
+        ).fetchall()
+        if len(lists) < len(orders):
+            raise HTTPException(status_code=404, detail="This list was deleted")
+        board_ids = {lst["board_id"] for lst in lists}
+        if len(board_ids) > 1:
+            raise HTTPException(status_code=400, detail="Can't move cards between boards")
+        board_id = board_ids.pop()
+
+        # Drop ids for cards deleted since the page loaded, or from other boards.
+        on_board = {
+            row["id"]
+            for row in conn.execute(
+                """
+                SELECT cards.id FROM cards JOIN lists ON lists.id = cards.list_id
+                WHERE lists.board_id = ? AND cards.id IN (SELECT value FROM json_each(?))
+                """,
+                (board_id, json.dumps(card_ids + from_card_ids)),
+            )
+        }
+        in_request = set(card_ids) | set(from_card_ids)
+        for target_list_id, ids in orders.items():
+            known = [id_ for id_ in dict.fromkeys(ids) if id_ in on_board]
+            rewrite_positions(conn, "cards", "list_id", target_list_id, known, in_request)
+        db.bump_version(conn, board_id)
+
+
+@app.post("/lists/reorder", status_code=204)
+def reorder_lists(
+    board_id: Annotated[int, Form()],
+    list_ids: Annotated[list[int], Form()],
+    conn: sqlite3.Connection = Depends(db.get_db),
+):
+    """Save list order after a drag. Takes the board's full list order."""
+    with conn:
+        if conn.execute("SELECT 1 FROM boards WHERE id = ?", (board_id,)).fetchone() is None:
+            raise HTTPException(status_code=404, detail="This board was deleted")
+        on_board = {
+            row["id"]
+            for row in conn.execute(
+                "SELECT id FROM lists WHERE board_id = ? AND id IN (SELECT value FROM json_each(?))",
+                (board_id, json.dumps(list_ids)),
+            )
+        }
+        known = [id_ for id_ in dict.fromkeys(list_ids) if id_ in on_board]
+        rewrite_positions(conn, "lists", "board_id", board_id, known)
+        db.bump_version(conn, board_id)

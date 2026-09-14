@@ -165,16 +165,111 @@ function flash(message) {
   flash.timer = setTimeout(() => (el.hidden = true), 4000);
 }
 
+const OFFLINE_MESSAGE = "Couldn't reach the server. Check your connection.";
+
+function errorMessage(status, body) {
+  try {
+    const { detail } = JSON.parse(body); // FastAPI's HTTPException body
+    if (typeof detail === "string") return detail;
+  } catch {}
+  return `Something went wrong (${status})`;
+}
+
 document.addEventListener("htmx:responseError", (event) => {
   const { status, responseText } = event.detail.xhr;
-  let message = `Something went wrong (${status})`;
-  try {
-    const { detail } = JSON.parse(responseText); // FastAPI's HTTPException body
-    if (typeof detail === "string") message = detail;
-  } catch {}
-  flash(message);
+  flash(errorMessage(status, responseText));
 });
 
-document.addEventListener("htmx:sendError", () => {
-  flash("Couldn't reach the server. Check your connection.");
-});
+document.addEventListener("htmx:sendError", () => flash(OFFLINE_MESSAGE));
+
+// ---- Drag and drop --------------------------------------------------------
+// SortableJS moves the element in the DOM itself; we then post the full new
+// order of every list the drag touched. The server replies 204, so there's
+// nothing to swap. If the save fails, the element goes back where it was.
+//
+// This uses fetch rather than htmx: htmx queues requests per element and can
+// drop a queued one, which here would silently lose a move.
+//
+// body.dragging is set for the duration of a drag. It enlarges empty lists as
+// drop targets, and board polling will use it to hold off refreshing mid-drag.
+
+function idsIn(container, selector, attribute) {
+  return [...container.querySelectorAll(selector)].map((el) => el.getAttribute(attribute));
+}
+
+// Undoes a Sortable move by putting the element back at its old index.
+function undoMove({ item, from, oldIndex }) {
+  item.remove();
+  from.insertBefore(item, from.children[oldIndex] ?? null);
+}
+
+async function saveOrder(url, body, drop) {
+  try {
+    const response = await fetch(url, { method: "POST", body });
+    if (response.ok) return;
+    flash(errorMessage(response.status, await response.text()));
+  } catch {
+    flash(OFFLINE_MESSAGE);
+  }
+  undoMove(drop);
+}
+
+const dragOptions = {
+  animation: 150,
+  ghostClass: "drag-ghost",
+  delay: 150, // on touch screens, a short hold starts a drag so swiping still scrolls
+  delayOnTouchOnly: true,
+  onStart: () => document.body.classList.add("dragging"),
+};
+
+function onCardDrop(drop) {
+  document.body.classList.remove("dragging");
+  const { from, to } = drop;
+  if (from === to && drop.oldIndex === drop.newIndex) return;
+
+  const body = new URLSearchParams({ list_id: to.dataset.listId });
+  for (const id of idsIn(to, ".card", "data-card-id")) body.append("card_ids", id);
+  if (from !== to) {
+    body.append("from_list_id", from.dataset.listId);
+    for (const id of idsIn(from, ".card", "data-card-id")) body.append("from_card_ids", id);
+  }
+  saveOrder("/cards/reorder", body, drop);
+}
+
+function onListDrop(drop) {
+  document.body.classList.remove("dragging");
+  if (drop.oldIndex === drop.newIndex) return;
+
+  const container = drop.to;
+  const body = new URLSearchParams({ board_id: container.dataset.boardId });
+  for (const id of idsIn(container, ":scope > .list", "data-list-id")) body.append("list_ids", id);
+  saveOrder("/lists/reorder", body, drop);
+}
+
+// Attaches Sortable to any container that doesn't have it yet. Safe to call
+// repeatedly: htmx swaps replace elements, and their Sortable instances with them.
+function initSortables() {
+  const container = document.getElementById("lists-container");
+  if (!container) return;
+
+  if (!Sortable.get(container)) {
+    Sortable.create(container, {
+      ...dragOptions,
+      draggable: ".list",
+      handle: ".list-title",
+      onEnd: onListDrop,
+    });
+  }
+  for (const cards of container.querySelectorAll(".cards")) {
+    if (Sortable.get(cards)) continue;
+    Sortable.create(cards, {
+      ...dragOptions,
+      group: "cards", // lets cards move between lists
+      draggable: ".card",
+      onEnd: onCardDrop,
+    });
+  }
+}
+
+document.addEventListener("DOMContentLoaded", initSortables);
+document.addEventListener("htmx:afterSwap", initSortables);

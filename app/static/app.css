@@ -107,7 +107,17 @@ body {
   box-shadow: 0 1px 1px rgb(9 30 66 / 0.25);
   overflow-wrap: anywhere;
 }
-.card:focus-visible { outline: 2px solid #0c66e4; }
+/* Inset because .cards is a scroll container, which clips anything drawn outside it. */
+.card:focus-visible {
+  outline: 2px solid #0c66e4;
+  outline-offset: -2px;
+}
+
+/* ---- Drag and drop ---- */
+
+.list-title { cursor: grab; } /* lists are dragged by their title */
+.drag-ghost { opacity: 0.4; } /* the placeholder showing where the drop will land */
+.dragging .cards { min-height: 2.5rem; } /* easier to drop into an empty list */
 
 /* ---- Card composer ---- */
 
