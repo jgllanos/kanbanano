@@ -1,0 +1,103 @@
+:root {
+  --text: #172b4d;
+  --muted: #5e6c84;
+  --list-bg: #ebecf0;
+  --card-bg: #fff;
+  --radius: 8px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f4f5f7;
+}
+
+/* ---- Top bar ---- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: #1d2125;
+  color: #fff;
+}
+.board-page .topbar { background: rgb(0 0 0 / 0.25); }
+.brand { font-weight: 700; color: inherit; text-decoration: none; }
+.board-title { margin: 0; font-size: 1.1rem; }
+
+/* ---- Board index ---- */
+
+.board-index {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+.board-tiles {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+}
+.board-tile {
+  display: block;
+  height: 96px;
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+.board-tile:hover { filter: brightness(0.92); }
+.empty { color: var(--muted); }
+
+/* ---- Board view ---- */
+
+.board-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.lists {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+.list {
+  flex: 0 0 272px;
+  max-height: calc(100vh - 5rem);
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  background: var(--list-bg);
+  border-radius: var(--radius);
+}
+.list-title {
+  margin: 0.25rem 0.5rem 0.5rem;
+  font-size: 0.95rem;
+}
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0.5rem; /* keeps empty lists a usable drop target */
+  overflow-y: auto;
+}
+.card {
+  padding: 0.5rem 0.75rem;
+  background: var(--card-bg);
+  border-radius: 6px;
+  box-shadow: 0 1px 1px rgb(9 30 66 / 0.25);
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,8 @@
+<section class="list" id="list-{{ list.id }}" data-list-id="{{ list.id }}">
+  <h2 class="list-title">{{ list.title }}</h2>
+  <ol class="cards" id="cards-{{ list.id }}" data-list-id="{{ list.id }}">
+    {% for card in list.cards %}
+      {% include "_card.html" %}
+    {% endfor %}
+  </ol>
+</section>
