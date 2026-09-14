@@ -10,9 +10,17 @@
     {% with board_id=board.id %}{% include "_identity.html" %}{% endwith %}
   </header>
 
-  {# Polling swaps only #lists-container. Keep anything with local UI state outside it. #}
+  {# Polling swaps only #lists-container (and the "I am" picker, whose state is in
+     localStorage). Keep anything else with local UI state outside it. #}
   {% include "_lists.html" %}
 </div>
+
+{# Asks every 3s whether the board changed. The `refresh` event polls right away;
+   app.js sends it when a refresh that had to wait becomes safe. See "Polling" in app.js. #}
+<div id="board-poller" hidden
+     hx-get="/boards/{{ board.id }}/poll" hx-vals="js:{v: boardVersion()}"
+     hx-trigger="every 3s [pollAllowed()], refresh"
+     hx-target="#lists-container" hx-swap="outerHTML"></div>
 
 <div id="modal-root"></div>
 {% endblock %}

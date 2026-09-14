@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -28,6 +28,35 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+
+@app.middleware("http")
+async def revalidate_static_files(request: Request, call_next):
+    """Make browsers check static files for changes on every load.
+
+    Without a Cache-Control header they may reuse a cached copy for a while
+    without asking, so a page can keep running old JavaScript after an update.
+    Checking costs a 304 when nothing changed.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
+
+@app.middleware("http")
+async def report_board_version(request: Request, call_next):
+    """Tell the client which board version its own change produced.
+
+    Every write bumps the board version, so without this the client's next poll
+    would see a new version and refetch the board just to show a change it's
+    already showing. See adoptVersion in app.js for how the client uses it.
+    """
+    response = await call_next(request)
+    conn = getattr(request.state, "db", None)
+    if conn is not None and conn.board_version is not None:
+        response.headers["X-Board-Version"] = str(conn.board_version)
+    return response
 
 
 def initials(name: str) -> str:
@@ -168,6 +197,36 @@ def board_view(
     return templates.TemplateResponse(
         request,
         "board.html",
+        {
+            "board": board,
+            "lists": load_lists(conn, board_id),
+            "people": board_labels(conn, board_id)["person"],
+        },
+    )
+
+
+@app.get("/boards/{board_id}/poll", response_class=HTMLResponse)
+def poll_board(
+    board_id: int, v: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """204 if version `v` is current, otherwise the freshly rendered lists container.
+
+    The version is read before the lists, so a write landing in between makes
+    the content newer than its label, never older: at worst the next poll
+    fetches again, rather than missing a change.
+    """
+    board = conn.execute("SELECT id, version FROM boards WHERE id = ?", (board_id,)).fetchone()
+    if board is None:
+        # 286 tells htmx to stop polling; the message replaces the lists.
+        return HTMLResponse(
+            '<div id="lists-container" class="lists board-gone">This board was deleted.</div>',
+            status_code=286,
+        )
+    if board["version"] == v:
+        return Response(status_code=204)
+    return templates.TemplateResponse(
+        request,
+        "_board_refresh.html",
         {
             "board": board,
             "lists": load_lists(conn, board_id),

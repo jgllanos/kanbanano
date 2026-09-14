@@ -300,7 +300,7 @@ document.addEventListener("htmx:sendError", (event) => {
 // drop a queued one, which here would silently lose a move.
 //
 // body.dragging is set for the duration of a drag. It enlarges empty lists as
-// drop targets, and board polling will use it to hold off refreshing mid-drag.
+// drop targets, and holds off board refreshes mid-drag (see Polling).
 
 function idsIn(container, selector, attribute) {
   return [...container.querySelectorAll(selector)].map((el) => el.getAttribute(attribute));
@@ -313,14 +313,27 @@ function undoMove({ item, from, oldIndex }) {
 }
 
 async function saveOrder(url, body, drop) {
+  pendingWrites++; // htmx requests are counted by listeners; fetch has to do it itself
   try {
     const response = await fetch(url, { method: "POST", body });
-    if (response.ok) return;
-    flash(errorMessage(response.status, await response.text()));
+    if (response.ok) {
+      adoptVersion(response.headers.get("X-Board-Version"));
+    } else {
+      flash(errorMessage(response.status, await response.text()));
+      undoMove(drop);
+    }
   } catch {
     flash(OFFLINE_MESSAGE);
+    undoMove(drop);
+  } finally {
+    pendingWrites--;
+    refreshIfStale();
   }
-  undoMove(drop);
+}
+
+function endDrag() {
+  document.body.classList.remove("dragging");
+  refreshSoon(); // runs after saveOrder, if the drop starts one, has counted itself
 }
 
 const dragOptions = {
@@ -332,7 +345,7 @@ const dragOptions = {
 };
 
 function onCardDrop(drop) {
-  document.body.classList.remove("dragging");
+  endDrag();
   const { from, to } = drop;
   if (from === to && drop.oldIndex === drop.newIndex) return;
 
@@ -346,7 +359,7 @@ function onCardDrop(drop) {
 }
 
 function onListDrop(drop) {
-  document.body.classList.remove("dragging");
+  endDrag();
   if (drop.oldIndex === drop.newIndex) return;
 
   const container = drop.to;
@@ -382,3 +395,135 @@ function initSortables() {
 
 document.addEventListener("DOMContentLoaded", initSortables);
 document.addEventListener("htmx:afterSwap", initSortables);
+
+// ---- Polling --------------------------------------------------------------
+// #board-poller asks every 3s whether the board has moved past the version in
+// #lists-container's data-version. If it has, the server sends the whole lists
+// container and it's swapped in. This is only for seeing other people's
+// changes: our own are shown straight from their responses.
+//
+// A refresh must not wreck what the user is in the middle of. It's held back,
+// and the board marked stale, only when it would replace something in use: a
+// form field it re-renders has focus (a composer, the "I am" picker), a drag
+// is under way, or one of our own saves is in flight. It then catches up as
+// soon as none of those hold. An open modal doesn't hold it back: the modal is
+// outside the refreshed area, so the board behind it stays live. A refresh
+// keeps scroll positions, composer drafts, and focus (htmx refocuses by id).
+
+let stale = false; // a poll found changes that couldn't be shown yet
+let pendingWrites = 0; // our own saves in flight
+let restoreBoardState = null; // set just before a refresh swap, run right after
+
+function boardVersion() {
+  return document.getElementById("lists-container")?.dataset.version;
+}
+
+// The poller's `every 3s` filter. No need to ask while we already know the
+// board is stale, or while the tab is in the background.
+function pollAllowed() {
+  return !stale && !document.hidden;
+}
+
+// Everything a refresh replaces: the lists, and the "I am" picker out-of-band.
+const REFRESHED_AREA = "#lists-container, #identity";
+
+function refreshBlocked() {
+  const active = document.activeElement;
+  return (
+    (isTyping(active) && active.closest(REFRESHED_AREA) !== null) ||
+    document.body.classList.contains("dragging") ||
+    pendingWrites > 0
+  );
+}
+
+function refreshIfStale() {
+  const poller = document.getElementById("board-poller");
+  if (!poller || !stale || refreshBlocked()) return;
+  stale = false;
+  htmx.trigger(poller, "refresh");
+}
+
+// Deferred a tick so focus has settled on its new element, and any save that
+// the blur set off has started (and so counts as pending). Completed saves
+// call refreshIfStale directly.
+function refreshSoon() {
+  setTimeout(refreshIfStale);
+}
+
+document.addEventListener("focusout", refreshSoon);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  stale = true; // polling paused while hidden, so we may have missed changes
+  refreshIfStale();
+});
+
+// Our own saves bump the version too, and report the new one in a header.
+// Taking it on means the next poll won't refetch a change we already show.
+// Only safe when it's exactly one past ours: anything more means someone else
+// changed something too, which the poll still needs to fetch.
+function adoptVersion(header) {
+  const container = document.getElementById("lists-container");
+  if (container && header && Number(header) === Number(container.dataset.version) + 1) {
+    container.dataset.version = header;
+  }
+}
+
+const isWrite = (event) => event.detail.requestConfig.verb !== "get";
+
+document.addEventListener("htmx:beforeRequest", (event) => {
+  if (isWrite(event)) pendingWrites++;
+});
+
+document.addEventListener("htmx:afterRequest", (event) => {
+  if (!isWrite(event)) return;
+  pendingWrites--;
+  if (event.detail.successful) {
+    adoptVersion(event.detail.xhr.getResponseHeader("X-Board-Version"));
+  }
+  refreshIfStale();
+});
+
+// Swap events fire on the swap target, and htmx sets detail.elt to whatever the
+// event fired on, so the element that made the request is in requestConfig.
+const fromPoller = (event) => event.detail.requestConfig?.elt.id === "board-poller";
+
+document.addEventListener("htmx:beforeSwap", (event) => {
+  if (!fromPoller(event) || !event.detail.shouldSwap) return;
+  if (refreshBlocked()) {
+    event.detail.shouldSwap = false;
+    stale = true;
+  } else {
+    restoreBoardState = snapshotBoard();
+  }
+});
+
+document.addEventListener("htmx:afterSwap", (event) => {
+  if (!fromPoller(event) || !restoreBoardState) return;
+  restoreBoardState();
+  restoreBoardState = null;
+});
+
+// Captures what a refresh would otherwise lose, and returns a function that
+// puts it back: scroll positions, composer drafts, and which cards were just
+// added (and so exempt from the "Assigned to me" filter).
+function snapshotBoard() {
+  const container = document.getElementById("lists-container");
+  const scrollLeft = container.scrollLeft;
+  const lists = [...container.querySelectorAll(".list")].map((list) => ({
+    id: list.id,
+    scrollTop: list.querySelector(".cards").scrollTop,
+    draft: list.querySelector(".composer textarea").value,
+  }));
+  const justAdded = [...container.querySelectorAll(".card.just-added")].map((card) => card.id);
+
+  return () => {
+    document.getElementById("lists-container").scrollLeft = scrollLeft;
+    for (const { id, scrollTop, draft } of lists) {
+      const list = document.getElementById(id);
+      if (!list) continue; // someone else deleted it
+      list.querySelector(".cards").scrollTop = scrollTop;
+      list.querySelector(".composer textarea").value = draft;
+    }
+    for (const id of justAdded) document.getElementById(id)?.classList.add("just-added");
+  };
+}
