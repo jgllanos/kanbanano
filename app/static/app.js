@@ -1,37 +1,46 @@
 // Client code for Kanbanano. Plain script, no build step. Loaded before Alpine.
 
-// ---- Card composer --------------------------------------------------------
-// One per list, at most one open at a time. The form posts with htmx and the
-// server returns just the new card, appended to the list. The composer itself
-// is never replaced, so it keeps focus between cards.
+// ---- Composers ------------------------------------------------------------
+// Both the card composer and the "add a list" composer stay in the page between
+// submissions, so they keep focus and anything typed mid-request survives. This
+// wires up the part they share: the field empties as the request goes out, so
+// the user can start the next one immediately, and fills back in if it fails.
+// `onAdded` runs after a successful add.
+
+function composerForm(form, field, onAdded) {
+  let submitted = ""; // text of the in-flight request, put back if it fails
+
+  // htmx has already collected the form values when this fires, so clearing the
+  // field doesn't affect the request. Anything typed while it's in flight is the
+  // start of the next card or list.
+  form.addEventListener("htmx:configRequest", () => {
+    submitted = field.value;
+    field.value = "";
+  });
+
+  // Fires for success, HTTP errors, and network errors alike.
+  form.addEventListener("htmx:afterRequest", (event) => {
+    if (event.detail.successful) onAdded();
+    else field.value = [submitted, field.value].filter(Boolean).join(" ");
+    submitted = "";
+  });
+}
+
+// ---- List: card composer, and renaming ------------------------------------
+// One card composer per list, at most one open at a time. The server returns
+// just the new card, appended to the list. Renaming swaps the heading for a
+// field in place; see _list.html.
 
 document.addEventListener("alpine:init", () => {
   Alpine.data("boardList", () => ({
     composing: false,
-    submitted: "", // title of the in-flight request, put back if it fails
+    renaming: false,
 
     init() {
-      const form = this.$refs.form;
-      const title = this.$refs.title;
-
-      // htmx has already collected the form values when this fires, so clearing
-      // the textarea doesn't affect the request. Anything typed while the
-      // request is in flight is the start of the next card.
-      form.addEventListener("htmx:configRequest", () => {
-        this.submitted = title.value;
-        title.value = "";
-      });
-
-      // Fires for success, HTTP errors, and network errors alike.
-      form.addEventListener("htmx:afterRequest", (event) => {
-        if (event.detail.successful) {
-          const card = this.$refs.cards.lastElementChild;
-          card?.classList.add("just-added"); // exempt from the "Assigned to me" filter
-          card?.scrollIntoView({ block: "nearest" });
-        } else {
-          title.value = [this.submitted, title.value].filter(Boolean).join(" ");
-        }
-        this.submitted = "";
+      composerForm(this.$refs.form, this.$refs.title, () => {
+        const card = this.$refs.cards.lastElementChild;
+        card?.classList.add("just-added"); // exempt from the "Assigned to me" filter
+        card?.scrollIntoView({ block: "nearest" });
       });
     },
 
@@ -58,6 +67,30 @@ document.addEventListener("alpine:init", () => {
         event.preventDefault();
         if (this.$refs.title.value.trim()) this.$refs.form.requestSubmit();
       }
+    },
+  }));
+
+  // ---- "Add a list" composer ----------------------------------------------
+  // The last column of the board. New lists are swapped in just before it, so
+  // it stays at the right-hand end and the next title can be typed straight in.
+
+  Alpine.data("addList", () => ({
+    composing: false,
+
+    init() {
+      composerForm(this.$refs.form, this.$refs.title, () =>
+        this.$root.scrollIntoView({ block: "nearest", inline: "nearest" }),
+      );
+    },
+
+    open() {
+      this.composing = true;
+      this.$nextTick(() => this.$refs.title.focus());
+    },
+
+    // Hides the form but keeps any draft text for next time, as the card composer does.
+    close() {
+      this.composing = false;
     },
   }));
 
@@ -379,6 +412,10 @@ function initSortables() {
       ...dragOptions,
       draggable: ".list",
       handle: ".list-title",
+      // Keeps the "add a list" column at the end: it's the only child that
+      // isn't a list, and a list dropped past it would look out of place until
+      // the next refresh put it back.
+      onMove: ({ related }) => related.classList.contains("list"),
       onEnd: onListDrop,
     });
   }
@@ -404,7 +441,8 @@ document.addEventListener("htmx:afterSwap", initSortables);
 //
 // A refresh must not wreck what the user is in the middle of. It's held back,
 // and the board marked stale, only when it would replace something in use: a
-// form field it re-renders has focus (a composer, the "I am" picker), a drag
+// form field it re-renders has focus (a composer, a title field, the "I am"
+// picker), a drag
 // is under way, or one of our own saves is in flight. It then catches up as
 // soon as none of those hold. An open modal doesn't hold it back: the modal is
 // outside the refreshed area, so the board behind it stays live. A refresh
@@ -424,8 +462,8 @@ function pollAllowed() {
   return !stale && !document.hidden;
 }
 
-// Everything a refresh replaces: the lists, and the "I am" picker out-of-band.
-const REFRESHED_AREA = "#lists-container, #identity";
+// Everything a refresh replaces: the lists, and the header out-of-band.
+const REFRESHED_AREA = "#lists-container, #board-header";
 
 function refreshBlocked() {
   const active = document.activeElement;
@@ -515,6 +553,7 @@ function snapshotBoard() {
     draft: list.querySelector(".composer textarea").value,
   }));
   const justAdded = [...container.querySelectorAll(".card.just-added")].map((card) => card.id);
+  const newListDraft = container.querySelector("#add-list input[name=title]").value;
 
   return () => {
     document.getElementById("lists-container").scrollLeft = scrollLeft;
@@ -524,6 +563,7 @@ function snapshotBoard() {
       list.querySelector(".cards").scrollTop = scrollTop;
       list.querySelector(".composer textarea").value = draft;
     }
+    document.querySelector("#add-list input[name=title]").value = newListDraft;
     for (const id of justAdded) document.getElementById(id)?.classList.add("just-added");
   };
 }

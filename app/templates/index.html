@@ -7,6 +7,14 @@
 
 <main class="board-index">
   <h1>Boards</h1>
+
+  {# The server answers with a redirect to the new board, so there's nothing to swap. #}
+  <form class="board-create" hx-post="/boards" hx-swap="none">
+    <input type="text" name="title" required maxlength="100" autocomplete="off"
+           placeholder="New board title" aria-label="New board title">
+    <button type="submit" class="primary">Create board</button>
+  </form>
+
   <ul class="board-tiles">
     {% for board in boards %}
       <li>
@@ -15,7 +23,7 @@
         </a>
       </li>
     {% else %}
-      <li class="empty">No boards yet. Run <code>uv run seed.py</code> to add sample data.</li>
+      <li class="empty">No boards yet — create one above.</li>
     {% endfor %}
   </ul>
 </main>

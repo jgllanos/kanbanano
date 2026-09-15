@@ -29,11 +29,14 @@ class Connection(sqlite3.Connection):
     board_version: int | None = None
 
 
-def connect(path: Path = DB_PATH) -> Connection:
+def connect(path: Path | None = None) -> Connection:
+    # DB_PATH is read here rather than defaulted in the signature so that tests
+    # can point the whole app at a scratch database.
+    #
     # check_same_thread=False: FastAPI may run a sync dependency and the endpoint
     # using it on different threadpool threads. Each request still gets its own
     # connection, used by one thread at a time, so this is safe.
-    conn = sqlite3.connect(path, check_same_thread=False, factory=Connection)
+    conn = sqlite3.connect(path or DB_PATH, check_same_thread=False, factory=Connection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

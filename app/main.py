@@ -68,12 +68,15 @@ templates.env.filters["initials"] = initials
 templates.env.globals["LABEL_COLORS"] = db.LABEL_COLORS
 
 
-def clean_title(title: str) -> str:
-    """Titles are one line: collapse pasted newlines and runs of spaces. 400 if blank."""
-    title = " ".join(title.split())
-    if not title:
-        raise HTTPException(status_code=400, detail="Card title can't be empty")
-    return title
+def clean_text(value: str, what: str) -> str:
+    """Titles and names are one line: collapse pasted newlines and runs of spaces.
+
+    400 if nothing is left; `what` names the field in the message the user sees.
+    """
+    value = " ".join(value.split())
+    if not value:
+        raise HTTPException(status_code=400, detail=f"{what} can't be empty")
+    return value
 
 
 def attach_labels(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
@@ -92,6 +95,22 @@ def attach_labels(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
     ):
         by_id[row["card_id"]]["people" if row["kind"] == "person" else "labels"].append(row)
     return cards
+
+
+def load_board(conn: sqlite3.Connection, board_id: int) -> sqlite3.Row:
+    """One board. 404 if it's been deleted, which also covers a made-up URL."""
+    board = conn.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
+    if board is None:
+        raise HTTPException(status_code=404, detail="This board was deleted")
+    return board
+
+
+def load_list(conn: sqlite3.Connection, list_id: int) -> sqlite3.Row:
+    """One list. 404 if it's been deleted."""
+    lst = conn.execute("SELECT * FROM lists WHERE id = ?", (list_id,)).fetchone()
+    if lst is None:
+        raise HTTPException(status_code=404, detail="This list was deleted")
+    return lst
 
 
 def load_lists(conn: sqlite3.Connection, board_id: int) -> list[dict]:
@@ -156,13 +175,6 @@ def board_labels(conn: sqlite3.Connection, board_id: int) -> dict[str, list]:
     return options
 
 
-def clean_label_name(name: str) -> str:
-    name = " ".join(name.split())
-    if not name:
-        raise HTTPException(status_code=400, detail="Name can't be empty")
-    return name
-
-
 def check_color(color: str) -> None:
     # Colors are rendered into style attributes, so this is also what keeps
     # arbitrary CSS out of the page.
@@ -187,22 +199,74 @@ def board_index(request: Request, conn: sqlite3.Connection = Depends(db.get_db))
     return templates.TemplateResponse(request, "index.html", {"boards": boards})
 
 
+@app.post("/boards")
+def create_board(
+    title: Annotated[str, Form()], conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """Create an empty board and send the browser straight to it.
+
+    HX-Redirect rather than a 303 so a bad title comes back as a flash on the
+    index page like every other error, instead of a raw error page.
+    """
+    title = clean_text(title, "Board title")
+    with conn:
+        board_id = conn.execute("INSERT INTO boards (title) VALUES (?)", (title,)).lastrowid
+    return Response(status_code=204, headers={"HX-Redirect": f"/boards/{board_id}"})
+
+
 @app.get("/boards/{board_id}", response_class=HTMLResponse)
 def board_view(
     board_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
 ):
-    board = conn.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
-    if board is None:
-        raise HTTPException(status_code=404, detail="Board not found")
     return templates.TemplateResponse(
         request,
         "board.html",
         {
-            "board": board,
+            "board": load_board(conn, board_id),
             "lists": load_lists(conn, board_id),
             "people": board_labels(conn, board_id)["person"],
         },
     )
+
+
+@app.patch("/boards/{board_id}", response_class=HTMLResponse)
+def update_board(
+    board_id: int,
+    request: Request,
+    title: Annotated[str, Form()],
+    conn: sqlite3.Connection = Depends(db.get_db),
+):
+    """Rename a board. Returns the header, which replaces itself.
+
+    The field's value attribute has to come back from the server for the same
+    reason as a list's — see _list_header.html.
+    """
+    title = clean_text(title, "Board title")
+    with conn:
+        load_board(conn, board_id)
+        conn.execute("UPDATE boards SET title = ? WHERE id = ?", (title, board_id))
+        db.bump_version(conn, board_id)
+    return templates.TemplateResponse(
+        request,
+        "_board_header.html",
+        {
+            "board": load_board(conn, board_id),
+            "people": board_labels(conn, board_id)["person"],
+        },
+    )
+
+
+@app.delete("/boards/{board_id}")
+def delete_board(board_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
+    """Delete a board and everything on it, then go back to the index.
+
+    No version bump: the row is gone, so other clients' polls get the 286 that
+    tells them the board is no longer there.
+    """
+    with conn:
+        load_board(conn, board_id)
+        conn.execute("DELETE FROM boards WHERE id = ?", (board_id,))
+    return Response(status_code=204, headers={"HX-Redirect": "/"})
 
 
 @app.get("/boards/{board_id}/poll", response_class=HTMLResponse)
@@ -215,7 +279,7 @@ def poll_board(
     the content newer than its label, never older: at worst the next poll
     fetches again, rather than missing a change.
     """
-    board = conn.execute("SELECT id, version FROM boards WHERE id = ?", (board_id,)).fetchone()
+    board = conn.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
     if board is None:
         # 286 tells htmx to stop polling; the message replaces the lists.
         return HTMLResponse(
@@ -235,6 +299,58 @@ def poll_board(
     )
 
 
+@app.post("/lists", response_class=HTMLResponse)
+def create_list(
+    request: Request,
+    board_id: Annotated[int, Form()],
+    title: Annotated[str, Form()],
+    conn: sqlite3.Connection = Depends(db.get_db),
+):
+    """Append a list to the right-hand end of a board. Returns just the new list."""
+    title = clean_text(title, "List title")
+    with conn:
+        load_board(conn, board_id)
+        list_id = conn.execute(
+            """
+            INSERT INTO lists (board_id, title, position)
+            VALUES (?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM lists WHERE board_id = ?))
+            """,
+            (board_id, title, board_id),
+        ).lastrowid
+        db.bump_version(conn, board_id)
+
+    lst = dict(load_list(conn, list_id), cards=[])
+    return templates.TemplateResponse(request, "_list.html", {"list": lst})
+
+
+@app.patch("/lists/{list_id}", response_class=HTMLResponse)
+def update_list(
+    list_id: int,
+    request: Request,
+    title: Annotated[str, Form()],
+    conn: sqlite3.Connection = Depends(db.get_db),
+):
+    """Rename a list. Returns the list's header, which replaces itself."""
+    title = clean_text(title, "List title")
+    with conn:
+        lst = load_list(conn, list_id)
+        conn.execute("UPDATE lists SET title = ? WHERE id = ?", (title, list_id))
+        db.bump_version(conn, lst["board_id"])
+    return templates.TemplateResponse(
+        request, "_list_header.html", {"list": load_list(conn, list_id)}
+    )
+
+
+@app.delete("/lists/{list_id}", response_class=HTMLResponse)
+def delete_list(list_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
+    """Delete a list and its cards. Empty 200 for the same reason as delete_card."""
+    with conn:
+        lst = load_list(conn, list_id)
+        conn.execute("DELETE FROM lists WHERE id = ?", (list_id,))
+        db.bump_version(conn, lst["board_id"])
+    return HTMLResponse("")
+
+
 @app.post("/cards", response_class=HTMLResponse)
 def create_card(
     request: Request,
@@ -243,11 +359,9 @@ def create_card(
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
     """Append a card to the bottom of a list. Returns just the new card's HTML."""
-    title = clean_title(title)
+    title = clean_text(title, "Card title")
     with conn:
-        lst = conn.execute("SELECT board_id FROM lists WHERE id = ?", (list_id,)).fetchone()
-        if lst is None:
-            raise HTTPException(status_code=404, detail="This list was deleted")
+        lst = load_list(conn, list_id)
         card_id = conn.execute(
             """
             INSERT INTO cards (list_id, title, position)
@@ -349,8 +463,7 @@ def reorder_lists(
 ):
     """Save list order after a drag. Takes the board's full list order."""
     with conn:
-        if conn.execute("SELECT 1 FROM boards WHERE id = ?", (board_id,)).fetchone() is None:
-            raise HTTPException(status_code=404, detail="This board was deleted")
+        load_board(conn, board_id)
         on_board = {
             row["id"]
             for row in conn.execute(
@@ -389,7 +502,7 @@ def update_card(
     saved since, reject with 409 rather than silently overwrite that edit.
     Returns the new card face and updated_at, both swapped out-of-band.
     """
-    title = clean_title(title)
+    title = clean_text(title, "Card title")
     description = "\n".join(description.splitlines()).strip()  # browsers send \r\n
     with conn:
         card = load_card(conn, card_id)
@@ -508,7 +621,7 @@ def create_label(
     Takes a card rather than a board because labels are created from the card
     modal. Labels pick a palette color; people get the next one automatically.
     """
-    name = clean_label_name(name)
+    name = clean_text(name, "Name")
     if kind == "label":
         check_color(color)
 
@@ -553,7 +666,7 @@ def update_label(
     Like POST /labels this is done from a card's modal, so it takes the card:
     the response is that modal's section, plus every card face showing the label.
     """
-    name = clean_label_name(name)
+    name = clean_text(name, "Name")
     check_color(color)
     with conn:
         card = load_card(conn, card_id)

@@ -9,3 +9,13 @@ dependencies = [
     "python-multipart>=0.0.32",
     "uvicorn>=0.53.0",
 ]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",  # what fastapi.testclient drives the app through
+    "pytest>=8.4.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]  # the app isn't installed as a package; import it from the repo root

@@ -2,4 +2,24 @@
   {% for list in lists %}
     {% include "_list.html" %}
   {% endfor %}
+
+  {# Inside the container so it scrolls with the lists. It isn't a .list, so it's
+     never draggable, and app.js keeps lists from being dropped past it. New lists
+     are inserted just before it. #}
+  <div id="add-list" class="add-list" x-data="addList">
+    <button type="button" class="add-list-open" x-show="!composing" @click="open()">
+      + Add a list
+    </button>
+    <form x-show="composing" x-cloak x-ref="form"
+          hx-post="/lists" hx-target="#add-list" hx-swap="beforebegin">
+      <input type="hidden" name="board_id" value="{{ board.id }}">
+      <input type="text" name="title" x-ref="title" required maxlength="100"
+             placeholder="List title" aria-label="New list title" autocomplete="off"
+             @keydown.escape.prevent="close()">
+      <div class="composer-actions">
+        <button type="submit" class="primary">Add list</button>
+        <button type="button" @click="close()">Cancel</button>
+      </div>
+    </form>
+  </div>
 </div>

@@ -1,4 +1,4 @@
-{# Poll response when the board has changed: the lists container, plus the header's
-   "I am" picker out-of-band in case people were added, renamed or deleted. #}
+{# Poll response when the board has changed: the lists container, plus the header
+   out-of-band, which carries the board title and the "I am" picker. #}
 {% include "_lists.html" %}
-{% with board_id=board.id, oob=True %}{% include "_identity.html" %}{% endwith %}
+{% with oob=True %}{% include "_board_header.html" %}{% endwith %}

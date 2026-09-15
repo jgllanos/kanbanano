@@ -4,14 +4,10 @@
 
 {% block body %}
 <div class="board-page" style="background: {{ board.background }}">
-  <header class="topbar">
-    <a href="/" class="brand">Kanbanano</a>
-    <h1 class="board-title">{{ board.title }}</h1>
-    {% with board_id=board.id %}{% include "_identity.html" %}{% endwith %}
-  </header>
+  {% include "_board_header.html" %}
 
-  {# Polling swaps only #lists-container (and the "I am" picker, whose state is in
-     localStorage). Keep anything else with local UI state outside it. #}
+  {# Polling swaps only #lists-container and #board-header, whose local state is
+     either in localStorage or reconstructible. Keep anything else outside both. #}
   {% include "_lists.html" %}
 </div>
 
