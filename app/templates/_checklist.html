@@ -1,0 +1,13 @@
+{# The card modal's checklist. _checklist_body.html holds everything a write
+   replaces; the add-item form below it is never swapped, so it keeps focus and
+   you can type item after item without reaching for the mouse. #}
+<section class="checklist" x-data="checklistAdd">
+  {% include "_checklist_body.html" %}
+
+  <form class="checklist-add" x-ref="form"
+        hx-post="/cards/{{ card.id }}/checklist" hx-target="#checklist-body" hx-swap="outerHTML">
+    <input type="text" name="text" x-ref="text" required maxlength="200" autocomplete="off"
+           placeholder="Add an item" aria-label="New checklist item">
+    <button type="submit" class="primary">Add</button>
+  </form>
+</section>

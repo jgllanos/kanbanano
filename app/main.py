@@ -97,6 +97,53 @@ def attach_labels(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
     return cards
 
 
+def attach_progress(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
+    """Give each card dict `checklist_done` and `checklist_total`. One query.
+
+    Counts, not the items themselves: this is what the card face shows. The
+    modal loads the full checklist separately with load_checklist.
+    """
+    by_id = {card["id"]: card for card in cards}
+    for card in cards:
+        card["checklist_done"], card["checklist_total"] = 0, 0
+    for row in conn.execute(
+        """
+        SELECT card_id, SUM(done) AS done, COUNT(*) AS total
+        FROM checklist_items
+        WHERE card_id IN (SELECT value FROM json_each(?))
+        GROUP BY card_id
+        """,
+        (json.dumps(list(by_id)),),
+    ):
+        by_id[row["card_id"]]["checklist_done"] = row["done"]
+        by_id[row["card_id"]]["checklist_total"] = row["total"]
+    return cards
+
+
+def load_checklist(conn: sqlite3.Connection, card_id: int) -> list[sqlite3.Row]:
+    """A card's checklist items, in order."""
+    return conn.execute(
+        "SELECT * FROM checklist_items WHERE card_id = ? ORDER BY position, id", (card_id,)
+    ).fetchall()
+
+
+def load_item(conn: sqlite3.Connection, item_id: int) -> sqlite3.Row:
+    """One checklist item, with the board it hangs off for the version bump."""
+    item = conn.execute(
+        """
+        SELECT checklist_items.*, lists.board_id
+        FROM checklist_items
+        JOIN cards ON cards.id = checklist_items.card_id
+        JOIN lists ON lists.id = cards.list_id
+        WHERE checklist_items.id = ?
+        """,
+        (item_id,),
+    ).fetchone()
+    if item is None:
+        raise HTTPException(status_code=404, detail="This checklist item was deleted")
+    return item
+
+
 def load_board(conn: sqlite3.Connection, board_id: int) -> sqlite3.Row:
     """One board. 404 if it's been deleted, which also covers a made-up URL."""
     board = conn.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
@@ -114,7 +161,7 @@ def load_list(conn: sqlite3.Connection, list_id: int) -> sqlite3.Row:
 
 
 def load_lists(conn: sqlite3.Connection, board_id: int) -> list[dict]:
-    """A board's lists in order, each with its cards in order. Three queries total."""
+    """A board's lists in order, each with its cards in order. Four queries total."""
     lists = [
         dict(row)
         for row in conn.execute(
@@ -135,6 +182,7 @@ def load_lists(conn: sqlite3.Connection, board_id: int) -> list[dict]:
         )
     ]
     attach_labels(conn, cards)
+    attach_progress(conn, cards)
     cards_by_list = {lst["id"]: [] for lst in lists}
     for card in cards:
         cards_by_list[card["list_id"]].append(card)
@@ -154,7 +202,9 @@ def load_cards(conn: sqlite3.Connection, card_ids: Iterable[int]) -> list[dict]:
         """,
         (json.dumps(list(card_ids)),),
     )
-    return attach_labels(conn, [dict(row) for row in rows])
+    cards = [dict(row) for row in rows]
+    attach_labels(conn, cards)
+    return attach_progress(conn, cards)
 
 
 def load_card(conn: sqlite3.Connection, card_id: int) -> dict:
@@ -483,7 +533,11 @@ def card_detail(card_id: int, request: Request, conn: sqlite3.Connection = Depen
     return templates.TemplateResponse(
         request,
         "_card_modal.html",
-        {"card": card, "options": board_labels(conn, card["board_id"])},
+        {
+            "card": card,
+            "options": board_labels(conn, card["board_id"]),
+            "items": load_checklist(conn, card_id),
+        },
     )
 
 
@@ -699,3 +753,83 @@ def delete_label(
     return label_section(
         request, conn, card_id, label["kind"], affected, managing=True, people_changed=True
     )
+
+
+def checklist_body(request: Request, conn: sqlite3.Connection, card_id: int):
+    """Re-render the modal's checklist after a change.
+
+    Every checklist write answers with this: the progress count and the items,
+    plus the card's face out-of-band, since the face shows the same count. The
+    add-item form sits outside this block, so it keeps focus and whatever is
+    half-typed in it.
+    """
+    return templates.TemplateResponse(
+        request,
+        "_checklist_saved.html",
+        {"card": load_card(conn, card_id), "items": load_checklist(conn, card_id)},
+    )
+
+
+@app.post("/cards/{card_id}/checklist", response_class=HTMLResponse)
+def add_checklist_item(
+    card_id: int,
+    request: Request,
+    text: Annotated[str, Form()],
+    conn: sqlite3.Connection = Depends(db.get_db),
+):
+    """Append an item to a card's checklist."""
+    text = clean_text(text, "Checklist item")
+    with conn:
+        card = load_card(conn, card_id)
+        conn.execute(
+            """
+            INSERT INTO checklist_items (card_id, text, position)
+            VALUES (?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM checklist_items
+                           WHERE card_id = ?))
+            """,
+            (card_id, text, card_id),
+        )
+        db.bump_version(conn, card["board_id"])
+    return checklist_body(request, conn, card_id)
+
+
+@app.patch("/checklist/{item_id}", response_class=HTMLResponse)
+def update_checklist_item(
+    item_id: int,
+    request: Request,
+    done: Annotated[bool | None, Form()] = None,
+    text: Annotated[str | None, Form()] = None,
+    conn: sqlite3.Connection = Depends(db.get_db),
+):
+    """Tick an item off, or edit its text. Send whichever one changed.
+
+    `done` is sent as the value to set rather than as a toggle, so a stale modal
+    ticking a box can't untick what someone else just ticked — the same reason
+    the label endpoints are idempotent.
+    """
+    if text is not None:
+        text = clean_text(text, "Checklist item")
+    with conn:
+        item = load_item(conn, item_id)
+        conn.execute(
+            "UPDATE checklist_items SET done = ?, text = ? WHERE id = ?",
+            (
+                item["done"] if done is None else done,
+                item["text"] if text is None else text,
+                item_id,
+            ),
+        )
+        db.bump_version(conn, item["board_id"])
+    return checklist_body(request, conn, item["card_id"])
+
+
+@app.delete("/checklist/{item_id}", response_class=HTMLResponse)
+def delete_checklist_item(
+    item_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """Delete a checklist item. The gap left in positions is harmless, as for cards."""
+    with conn:
+        item = load_item(conn, item_id)
+        conn.execute("DELETE FROM checklist_items WHERE id = ?", (item_id,))
+        db.bump_version(conn, item["board_id"])
+    return checklist_body(request, conn, item["card_id"])

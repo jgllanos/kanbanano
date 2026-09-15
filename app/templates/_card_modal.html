@@ -26,6 +26,8 @@
       <p class="hint">Saves when you leave the field. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> saves now.</p>
     </form>
 
+    {% include "_checklist.html" %}
+
     {% with kind="label", options=options.label %}{% include "_label_section.html" %}{% endwith %}
     {% with kind="person", options=options.person %}{% include "_label_section.html" %}{% endwith %}
 

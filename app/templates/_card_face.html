@@ -7,10 +7,26 @@
   </div>
 {% endif %}
 <span class="card-title">{{ card.title }}</span>
-{% if card.has_description or card.people %}
+{% if card.has_description or card.checklist_total or card.people %}
   <div class="card-footer">
     {% if card.has_description %}
       <span class="card-badge" title="This card has a description" aria-label="Has a description">≡</span>
+    {% endif %}
+    {% if card.checklist_total %}
+      {% set complete = card.checklist_done == card.checklist_total %}
+      {# The tick is drawn rather than typed: a glyph like ☑ comes from whichever
+         fallback font has it, at whatever size that font thinks, which doesn't
+         match the digits next to it. This one is 1em of currentColor. #}
+      <span class="card-badge checklist-badge {{ 'is-complete' if complete }}"
+            title="Checklist" aria-label="Checklist: {{ card.checklist_done }} of {{ card.checklist_total }} done">
+        <svg class="badge-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <rect x="1.6" y="1.6" width="12.8" height="12.8" rx="2.5"
+                fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M4.6 8.2 7 10.6l4.4-4.8" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        {{ card.checklist_done }}/{{ card.checklist_total }}
+      </span>
     {% endif %}
     <span class="card-people">
       {% for person in card.people %}

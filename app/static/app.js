@@ -94,6 +94,18 @@ document.addEventListener("alpine:init", () => {
     },
   }));
 
+  // ---- Checklist add-item form --------------------------------------------
+  // Sits below the part of the checklist that writes replace, so it survives
+  // every add and keeps focus: type an item, Enter, type the next.
+
+  Alpine.data("checklistAdd", () => ({
+    init() {
+      composerForm(this.$refs.form, this.$refs.text, () =>
+        this.$refs.form.scrollIntoView({ block: "nearest" }),
+      );
+    },
+  }));
+
   // ---- Card modal ---------------------------------------------------------
   // GET /cards/{id} swaps a <dialog> into #modal-root, and it opens itself.
   // Closing leaves it in place (closed) until the next card replaces it, so

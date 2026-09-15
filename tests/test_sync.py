@@ -80,6 +80,9 @@ def writes(board):
         ("DELETE", f"/cards/{card}/labels/1", None),
         ("PATCH", "/labels/1", {"card_id": card, "name": "Later", "color": "#4bce97"}),
         ("DELETE", f"/labels/1?card_id={card}", None),
+        ("POST", f"/cards/{card}/checklist", {"text": "Washer"}),
+        ("PATCH", "/checklist/1", {"done": 1}),
+        ("DELETE", "/checklist/1", None),
         ("DELETE", f"/cards/{card}", None),
         ("DELETE", f"/lists/{board.todo}", None),
     ]
