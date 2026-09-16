@@ -1,0 +1,17 @@
+services:
+  kanbanano:
+    build: .
+    restart: unless-stopped
+    ports:
+      # Only reachable from this machine, e.g. by Tailscale Serve. See the README
+      # for serving it on your LAN directly instead.
+      - "127.0.0.1:8000:8000"
+    environment:
+      BOARD_PASSWORD: ${BOARD_PASSWORD:?set BOARD_PASSWORD in .env}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      ALLOW_HTTP: ${ALLOW_HTTP:-0}
+    volumes:
+      - data:/data
+
+volumes:
+  data:

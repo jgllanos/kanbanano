@@ -28,7 +28,8 @@ def required_env(name: str) -> str:
     return value
 
 
-# One shared password for everyone; see "Auth and identity" in plan.md.
+# One shared password for everyone. There are no user accounts: "who am I" is a
+# per-device preference in the header, not something the server knows.
 BOARD_PASSWORD = required_env("BOARD_PASSWORD")
 # Signs the session cookie. Changing it logs every device out.
 SECRET_KEY = required_env("SECRET_KEY")
