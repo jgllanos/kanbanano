@@ -3,9 +3,9 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      # Only reachable from this machine, e.g. by Tailscale Serve. See the README
-      # for serving it on your LAN directly instead.
-      - "127.0.0.1:8000:8000"
+      # By default only this machine can connect (e.g. Tailscale Serve). Set
+      # BIND_ADDRESS=0.0.0.0 in .env to serve on your LAN; see the README.
+      - "${BIND_ADDRESS:-127.0.0.1}:8000:8000"
     environment:
       BOARD_PASSWORD: ${BOARD_PASSWORD:?set BOARD_PASSWORD in .env}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}

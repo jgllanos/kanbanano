@@ -28,31 +28,56 @@ You need Docker with the Compose plugin.
    docker compose up -d --build
    ```
 
-The app listens on `127.0.0.1:8000`, so only this machine can reach it. To reach it
-from other devices, put Tailscale Serve in front (recommended) or open it up to the
-LAN (below).
+By default the app listens on `127.0.0.1:8000`, so only this machine can reach it.
+To reach it from other devices, either serve it on your LAN or put Tailscale Serve in
+front. Both are below.
 
 The data lives in a Docker volume called `kanbanano_data`, so it survives rebuilds.
 
+### On your LAN
+
+Set these in `.env`:
+
+```sh
+BIND_ADDRESS=0.0.0.0
+ALLOW_HTTP=1
+```
+
+Then run `docker compose up -d` and open `http://<server-ip>:8000`. Include the
+`http://`: some browsers try HTTPS first if you leave it off.
+
+`BIND_ADDRESS=0.0.0.0` publishes the port on every network interface instead of
+only on this machine. `ALLOW_HTTP=1` is needed because the login cookie is normally
+marked Secure, and browsers won't send a Secure cookie back over plain HTTP, so
+you'd log in and end up on the login page again.
+
+Plain HTTP isn't encrypted. Anyone who can see traffic on your network can read the
+board, the password when someone logs in, and the login cookie. The cookie is sent
+with every request and gets its holder in for a year without the password. That's
+a reasonable tradeoff on a home network where you trust every device, but not on a
+shared one.
+
 ### Behind Tailscale Serve
+
+With the default `BIND_ADDRESS=127.0.0.1` and `ALLOW_HTTP=0`, run:
 
 ```sh
 tailscale serve --bg 8000
 ```
 
 This serves the app at `https://<machine>.<tailnet>.ts.net` to devices on your
-tailnet, with HTTPS handled by Tailscale. The exact syntax has changed between
-Tailscale versions; check `tailscale serve --help` if that doesn't work.
+tailnet, with HTTPS handled by Tailscale. Each device needs Tailscale installed and
+signed in to your tailnet. The exact syntax has changed between Tailscale versions;
+check `tailscale serve --help` if that doesn't work.
 
-### Directly on your LAN
+### Moving from LAN to Tailscale
 
-In `compose.yaml`, change the port line to `"8000:8000"`, and in `.env` set
-`ALLOW_HTTP=1`. Then open `http://<server-ip>:8000`.
-
-`ALLOW_HTTP` is needed because the login cookie is normally marked Secure, and
-browsers won't send a Secure cookie back over plain HTTP, so you'd log in and end up
-on the login page again. Over plain HTTP the password crosses your network
-unencrypted.
+1. In `.env`, set `BIND_ADDRESS=127.0.0.1` and `ALLOW_HTTP=0`. Otherwise the app
+   stays reachable over plain HTTP alongside Tailscale.
+2. Change `SECRET_KEY`. Login cookies issued over HTTP stay valid for up to a year
+   and may have been seen on the network; a new key invalidates them, and everyone
+   logs in once more.
+3. Run `docker compose up -d`, then set up Tailscale Serve as above.
 
 ### Updating
 
@@ -65,13 +90,15 @@ docker compose up -d --build
 
 Set these in `.env`.
 
-| Variable         | Required | Meaning                                                        |
-| ---------------- | -------- | -------------------------------------------------------------- |
-| `BOARD_PASSWORD` | yes      | The password everyone uses to log in.                          |
-| `SECRET_KEY`     | yes      | Signs the login cookie. Changing it logs out every device.     |
-| `ALLOW_HTTP`     | no       | `1` to allow logging in over plain `http://`. Default `0`.     |
+| Variable         | Required | Meaning                                                                                           |
+| ---------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `BOARD_PASSWORD` | yes      | The password everyone uses to log in.                                                             |
+| `SECRET_KEY`     | yes      | Signs the login cookie. Changing it logs out every device.                                        |
+| `BIND_ADDRESS`   | no       | Where the port is published. `127.0.0.1` (default) for this machine only, `0.0.0.0` for your LAN. |
+| `ALLOW_HTTP`     | no       | `1` to allow logging in over plain `http://`. Default `0`.                                        |
 
-The app refuses to start if a required variable is missing.
+The app refuses to start if a required variable is missing. After changing `.env`,
+run `docker compose up -d` to apply it.
 
 Logins last a year from a device's last visit. Changing `BOARD_PASSWORD` doesn't
 log anyone out, because a session doesn't record which password was used. To log
