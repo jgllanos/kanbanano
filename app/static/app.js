@@ -1,11 +1,10 @@
 // Client code for Kanbanano. Plain script, no build step. Loaded before Alpine.
 
 // ---- Composers ------------------------------------------------------------
-// Both the card composer and the "add a list" composer stay in the page between
-// submissions, so they keep focus and anything typed mid-request survives. This
-// wires up the part they share: the field empties as the request goes out, so
-// the user can start the next one immediately, and fills back in if it fails.
-// `onAdded` runs after a successful add.
+// The card composer and the "add a list" composer stay on the page between
+// submissions, so they keep focus. This handles what they share: the field is
+// cleared when the request is sent, so the next entry can be typed right away,
+// and restored if the request fails. `onAdded` runs after a successful add.
 
 function composerForm(form, field, onAdded) {
   let submitted = ""; // text of the in-flight request, put back if it fails
@@ -27,9 +26,9 @@ function composerForm(form, field, onAdded) {
 }
 
 // ---- List: card composer, and renaming ------------------------------------
-// One card composer per list, at most one open at a time. The server returns
-// just the new card, appended to the list. Renaming swaps the heading for a
-// field in place; see _list.html.
+// One card composer per list, and at most one open at a time. The server returns
+// the new card, which is appended to the list. Renaming replaces the heading
+// with a field (see _list_header.html).
 
 document.addEventListener("alpine:init", () => {
   Alpine.data("boardList", () => ({
@@ -71,8 +70,8 @@ document.addEventListener("alpine:init", () => {
   }));
 
   // ---- "Add a list" composer ----------------------------------------------
-  // The last column of the board. New lists are swapped in just before it, so
-  // it stays at the right-hand end and the next title can be typed straight in.
+  // The last column of the board. New lists are inserted before it, so it stays
+  // at the end and the next title can be typed right away.
 
   Alpine.data("addList", () => ({
     composing: false,
@@ -95,8 +94,8 @@ document.addEventListener("alpine:init", () => {
   }));
 
   // ---- Checklist add-item form --------------------------------------------
-  // Sits below the part of the checklist that writes replace, so it survives
-  // every add and keeps focus: type an item, Enter, type the next.
+  // It's outside the part of the checklist that writes replace, so it keeps
+  // focus between items.
 
   Alpine.data("checklistAdd", () => ({
     init() {
@@ -108,8 +107,8 @@ document.addEventListener("alpine:init", () => {
 
   // ---- Card modal ---------------------------------------------------------
   // GET /cards/{id} swaps a <dialog> into #modal-root, and it opens itself.
-  // Closing leaves it in place (closed) until the next card replaces it, so
-  // a save that closing set off can still finish and report back here.
+  // Closing leaves it in place (closed) until the next card replaces it, so a
+  // save triggered by closing can still finish and report errors here.
   // Errors from anything inside the modal are shown in the modal.
 
   Alpine.data("cardModal", (cardId, listId) => ({
@@ -132,7 +131,7 @@ document.addEventListener("alpine:init", () => {
         if (elt === this.$refs.deleteButton) this.$root.close();
         return;
       }
-      // A save set off by closing the modal failed: reopen so the text isn't lost.
+      // A save triggered by closing the modal failed. Reopen it so the text isn't lost.
       if (!this.$root.open) this.$root.showModal();
       this.error = xhr.status ? errorMessage(xhr.status, xhr.responseText) : OFFLINE_MESSAGE;
       this.canReload = xhr.status === 409;
@@ -140,10 +139,9 @@ document.addEventListener("alpine:init", () => {
   }));
 
   // ---- "I am" picker and "Assigned to me" filter --------------------------
-  // Who you are is a per-device preference, not a credential: a person's id
-  // per board, in localStorage. Keyed by id so renaming a person doesn't
-  // break it. The server re-renders this widget when people change; init()
-  // then restores the saved state.
+  // Who you are is a per-device preference: a person's id for each board, saved
+  // in localStorage. It uses the id so renaming a person doesn't break it. When
+  // the server re-renders this widget, init() restores the saved state.
 
   Alpine.data("identity", (boardId) => ({
     me: "",
@@ -190,9 +188,9 @@ const storage = {
   },
 };
 
-// The filter is a generated style rule rather than a pass over the cards, so
-// it also applies to cards added or re-rendered later. Cards added with the
-// composer while it's on are exempt, so they don't vanish as you create them.
+// The filter is a generated CSS rule, so it also applies to cards added or
+// re-rendered later. Cards added with the composer while it's on are exempt, so
+// they don't disappear as you create them.
 const mineFilterStyle = document.createElement("style");
 document.head.append(mineFilterStyle);
 
@@ -337,15 +335,15 @@ document.addEventListener("htmx:sendError", (event) => {
 });
 
 // ---- Drag and drop --------------------------------------------------------
-// SortableJS moves the element in the DOM itself; we then post the full new
-// order of every list the drag touched. The server replies 204, so there's
-// nothing to swap. If the save fails, the element goes back where it was.
+// SortableJS moves the element in the DOM, then we post the new order of every
+// list the drag touched. The server replies 204. If the save fails, the element
+// is moved back.
 //
-// This uses fetch rather than htmx: htmx queues requests per element and can
-// drop a queued one, which here would silently lose a move.
+// This uses fetch instead of htmx, because htmx queues requests per element and
+// can drop a queued one, which would lose a move.
 //
-// body.dragging is set for the duration of a drag. It enlarges empty lists as
-// drop targets, and holds off board refreshes mid-drag (see Polling).
+// body.dragging is set during a drag. It makes empty lists bigger drop targets
+// and holds back board refreshes (see Polling).
 
 function idsIn(container, selector, attribute) {
   return [...container.querySelectorAll(selector)].map((el) => el.getAttribute(attribute));
@@ -362,8 +360,8 @@ async function saveOrder(url, body, drop) {
   try {
     const response = await fetch(url, { method: "POST", body });
     if (response.status === 401) {
-      // The session has gone. htmx requests follow the server's HX-Redirect;
-      // fetch doesn't know that header, so do the same by hand.
+      // The session has expired. fetch ignores the HX-Redirect header that htmx
+      // would follow, so redirect here.
       location.href = "/login";
     } else if (response.ok) {
       adoptVersion(response.headers.get("X-Board-Version"));
@@ -382,7 +380,7 @@ async function saveOrder(url, body, drop) {
 
 function endDrag() {
   document.body.classList.remove("dragging");
-  refreshSoon(); // runs after saveOrder, if the drop starts one, has counted itself
+  refreshSoon(); // deferred, so a save started by this drop is already counted
 }
 
 const dragOptions = {
@@ -428,9 +426,8 @@ function initSortables() {
       ...dragOptions,
       draggable: ".list",
       handle: ".list-title",
-      // Keeps the "add a list" column at the end: it's the only child that
-      // isn't a list, and a list dropped past it would look out of place until
-      // the next refresh put it back.
+      // Keep the "add a list" column last by refusing moves next to anything
+      // that isn't a list.
       onMove: ({ related }) => related.classList.contains("list"),
       onEnd: onListDrop,
     });
@@ -450,19 +447,17 @@ document.addEventListener("DOMContentLoaded", initSortables);
 document.addEventListener("htmx:afterSwap", initSortables);
 
 // ---- Polling --------------------------------------------------------------
-// #board-poller asks every 3s whether the board has moved past the version in
-// #lists-container's data-version. If it has, the server sends the whole lists
-// container and it's swapped in. This is only for seeing other people's
-// changes: our own are shown straight from their responses.
+// Every 3s, #board-poller asks whether the board is newer than the version in
+// #lists-container's data-version. If it is, the server sends the lists
+// container, which is swapped in. Polling is only for other people's changes;
+// our own come back in the responses to our requests.
 //
-// A refresh must not wreck what the user is in the middle of. It's held back,
-// and the board marked stale, only when it would replace something in use: a
-// form field it re-renders has focus (a composer, a title field, the "I am"
-// picker), a drag
-// is under way, or one of our own saves is in flight. It then catches up as
-// soon as none of those hold. An open modal doesn't hold it back: the modal is
-// outside the refreshed area, so the board behind it stays live. A refresh
-// keeps scroll positions, composer drafts, and focus (htmx refocuses by id).
+// A refresh is held back, and the board marked stale, when it would replace
+// something in use: a focused field inside the refreshed area (a composer, a
+// title field, the "I am" picker), a drag in progress, or one of our saves in
+// flight. It runs as soon as none of those apply. An open modal doesn't hold it
+// back, because the modal is outside the refreshed area. A refresh keeps scroll
+// positions, composer drafts and focus (htmx restores focus by id).
 
 let stale = false; // a poll found changes that couldn't be shown yet
 let pendingWrites = 0; // our own saves in flight
@@ -472,8 +467,8 @@ function boardVersion() {
   return document.getElementById("lists-container")?.dataset.version;
 }
 
-// The poller's `every 3s` filter. No need to ask while we already know the
-// board is stale, or while the tab is in the background.
+// The poller's `every 3s` filter: skip polling while the board is already known
+// to be stale, or while the tab is hidden.
 function pollAllowed() {
   return !stale && !document.hidden;
 }
@@ -497,9 +492,9 @@ function refreshIfStale() {
   htmx.trigger(poller, "refresh");
 }
 
-// Deferred a tick so focus has settled on its new element, and any save that
-// the blur set off has started (and so counts as pending). Completed saves
-// call refreshIfStale directly.
+// Waits a tick so focus has moved to its new element and any save triggered by
+// the blur has started (and counts as pending). Finished saves call
+// refreshIfStale directly.
 function refreshSoon() {
   setTimeout(refreshIfStale);
 }
@@ -511,10 +506,10 @@ document.addEventListener("visibilitychange", () => {
   refreshIfStale();
 });
 
-// Our own saves bump the version too, and report the new one in a header.
-// Taking it on means the next poll won't refetch a change we already show.
-// Only safe when it's exactly one past ours: anything more means someone else
-// changed something too, which the poll still needs to fetch.
+// Our own saves bump the version too, and return the new one in a header.
+// Adopting it stops the next poll refetching a change we already show. It's only
+// adopted if it's exactly one more than ours: a bigger jump means someone else
+// changed something that the poll still needs to fetch.
 function adoptVersion(header) {
   const container = document.getElementById("lists-container");
   if (container && header && Number(header) === Number(container.dataset.version) + 1) {

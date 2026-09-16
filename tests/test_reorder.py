@@ -47,7 +47,7 @@ def test_move_a_card_to_another_list(client, conn, board):
 
 
 def test_cards_the_client_did_not_know_about_keep_their_place(client, conn, board):
-    """Someone else's new card must not be dropped or left with a stale position."""
+    """A card someone else added keeps its place after our reorder."""
     tap, bins, shelf = board.cards
     client.post("/cards", data={"list_id": board.todo, "title": "Paint"})
     (paint,) = conn.execute("SELECT id FROM cards WHERE title = 'Paint'").fetchone()
@@ -118,8 +118,8 @@ def test_reorder_bumps_the_version_once(client, conn, board):
 
 
 def test_a_delete_leaves_a_gap_that_the_next_reorder_closes(client, conn, board):
-    """Deletes deliberately don't renumber: a gap doesn't change the reading
-    order, and closing it would mean writing every sibling on every delete."""
+    """Deletes don't renumber. A gap doesn't change the order, and renumbering
+    would rewrite every sibling on each delete."""
     tap, bins, shelf = board.cards
     client.request("DELETE", f"/cards/{bins}")
 
@@ -131,7 +131,7 @@ def test_a_delete_leaves_a_gap_that_the_next_reorder_closes(client, conn, board)
 
 
 def test_moves_do_not_touch_updated_at(client, conn, board):
-    """updated_at is the conflict token for description edits, not a mtime."""
+    """updated_at is the conflict token for description edits, so moves leave it alone."""
     tap, bins, shelf = board.cards
     before = conn.execute("SELECT updated_at FROM cards WHERE id = ?", (tap,)).fetchone()[0]
 

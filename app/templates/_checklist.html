@@ -1,6 +1,5 @@
-{# The card modal's checklist. _checklist_body.html holds everything a write
-   replaces; the add-item form below it is never swapped, so it keeps focus and
-   you can type item after item without reaching for the mouse. #}
+{# The card modal's checklist. Writes only replace _checklist_body.html, so the
+   add-item form keeps focus between items. #}
 <section class="checklist" x-data="checklistAdd">
   {% include "_checklist_body.html" %}
 

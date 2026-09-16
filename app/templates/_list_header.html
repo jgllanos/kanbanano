@@ -1,15 +1,11 @@
-{# A list's heading, the field that replaces it while renaming, and the delete
-   button. The heading is also the handle Sortable drags the list by.
-
-   A rename replaces this whole block with the server's version, so the heading
-   and the field's value attribute — what Escape reverts to — can't drift apart
-   from each other or from what was saved. #}
+{# A list's heading (also its drag handle), rename field and delete button. A
+   rename re-renders this block, so Escape reverts to the saved title. #}
 <div class="list-header">
   <h2 class="list-title" x-show="!renaming" title="Rename list"
       @click="renaming = true; $nextTick(() => $refs.listTitle.select())">{{ list.title }}</h2>
 
-  {# `change` fires only when the value actually changed, so opening the field
-     and leaving it alone — or reverting it with Escape — sends nothing. #}
+  {# Saves on change, so nothing is sent if the title wasn't edited or Escape
+     reverted it. #}
   <form class="list-rename" x-show="renaming" x-cloak
         hx-patch="/lists/{{ list.id }}" hx-trigger="change"
         hx-target="closest .list-header" hx-swap="outerHTML">
@@ -22,5 +18,5 @@
 
   <button type="button" class="list-delete" aria-label="Delete list"
           hx-delete="/lists/{{ list.id }}" hx-target="closest .list" hx-swap="delete"
-          hx-confirm="Delete this list? Its cards go with it, and this can't be undone.">✕</button>
+          hx-confirm="Delete this list and all its cards? This can't be undone.">✕</button>
 </div>

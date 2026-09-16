@@ -3,18 +3,17 @@
 {% block title %}{{ board.title }} · Kanbanano{% endblock %}
 
 {% block body %}
-{# The background colour comes from a <style> in the settings menu, so changing
-   it is one small swap rather than a re-render of this whole page. #}
+{# The background color is set by a <style> in the settings menu (_board_menu.html). #}
 <div class="board-page">
   {% include "_board_header.html" %}
 
-  {# Polling swaps only #lists-container and #board-header, whose local state is
-     either in localStorage or reconstructible. Keep anything else outside both. #}
+  {# Polls replace #lists-container and #board-header, so keep other UI state
+     outside them. #}
   {% include "_lists.html" %}
 </div>
 
-{# Asks every 3s whether the board changed. The `refresh` event polls right away;
-   app.js sends it when a refresh that had to wait becomes safe. See "Polling" in app.js. #}
+{# Polls every 3s for changes. app.js triggers `refresh` to poll immediately once
+   a delayed refresh is safe (see "Polling" in app.js). #}
 <div id="board-poller" hidden
      hx-get="/boards/{{ board.id }}/poll" hx-vals="js:{v: boardVersion()}"
      hx-trigger="every 3s [pollAllowed()], refresh"

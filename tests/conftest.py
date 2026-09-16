@@ -1,9 +1,8 @@
 """Fixtures and assertion helpers shared by the tests.
 
-Every test gets an empty database of its own, and the app is pointed at it by
-patching `db.DB_PATH` rather than by overriding the `get_db` dependency. That
-way requests go through the real connection-per-request path, including the
-middleware that reads `conn.board_version` off it.
+Each test gets its own empty database. The app is pointed at it by patching
+`db.DB_PATH` instead of overriding the `get_db` dependency, so requests use the
+real per-request connections, including the X-Board-Version middleware.
 
 `client` is logged in; `anon` isn't, for testing what's kept out.
 """
@@ -36,9 +35,9 @@ def conn(tmp_path, monkeypatch):
 
 
 def make_client() -> TestClient:
-    # Not used as a context manager: that would run the app's lifespan, which
-    # opens the real database to create the schema. HTTPS because the session
-    # cookie is Secure, and the client, like a browser, won't send it over HTTP.
+    # Not used as a context manager, which would run the app's lifespan and create
+    # the schema in the real database. HTTPS because the session cookie is Secure,
+    # and the client won't send it over HTTP.
     return TestClient(app, base_url="https://testserver")
 
 
@@ -109,8 +108,8 @@ def ordering(conn: sqlite3.Connection, table: str, parent_column: str, parent_id
 
 
 def card_order(conn: sqlite3.Connection, list_id: int) -> list[int]:
-    """A list's card ids in order. Says nothing about the positions themselves:
-    only a reorder promises those are contiguous (see test_reorder)."""
+    """A list's card ids in order. Positions are only guaranteed contiguous after
+    a reorder (see test_reorder)."""
     return [card_id for card_id, _ in ordering(conn, "cards", "list_id", list_id)]
 
 

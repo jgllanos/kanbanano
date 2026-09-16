@@ -1,12 +1,10 @@
-{# The board's top bar. Refreshed out-of-band by a poll so a rename by someone else
-   shows up; everything with local state inside it (the title field, the "I am"
-   picker) is either server-truth or backed by localStorage, so nothing is lost.
-   app.js holds a refresh back while anything in here has focus. #}
+{# The board's top bar. Polls re-render it out-of-band so other people's changes
+   show up. app.js holds the refresh back while anything in it has focus. #}
 <header id="board-header" class="topbar" {% if oob %}hx-swap-oob="true"{% endif %}>
   <a href="/" class="brand">Kanbanano</a>
 
-  {# Saves on `change`, so an unedited visit to the field sends nothing. The
-     response is this whole header again; see _list_header.html for why. #}
+  {# Saves on change. The response replaces the whole header, so Escape reverts
+     to the saved title. #}
   <form class="board-rename" hx-patch="/boards/{{ board.id }}" hx-trigger="change"
         hx-target="#board-header" hx-swap="outerHTML">
     <input class="board-title" name="title" value="{{ board.title }}" required maxlength="100"
@@ -15,8 +13,8 @@
            @keydown.escape.prevent="$el.value = $el.defaultValue; $el.blur()">
   </form>
 
-  {# oob=False: the picker rides along inside the header's own swap, and a nested
-     hx-swap-oob would make htmx swap it a second time. #}
+  {# oob=False: the picker is swapped as part of the header, so it shouldn't
+     also be swapped on its own. #}
   {% with board_id=board.id, oob=False %}{% include "_identity.html" %}{% endwith %}
 
   <div class="board-menu" x-data="{ open: false }" @click.outside="open = false"

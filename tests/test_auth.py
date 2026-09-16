@@ -12,10 +12,9 @@ from conftest import PASSWORD, make_client, version
 
 
 def protected_requests():
-    """(method, url) for every route that should need a login, with ids filled in.
+    """(method, url) for every route that needs a login, with ids filled in.
 
-    Built from the app's own route table, so a route added later is checked
-    without anyone remembering to add it here.
+    Built from the app's route table, so new routes are checked automatically.
     """
     for route in app.routes:
         if not isinstance(route, APIRoute) or route.path in LOGIN_EXEMPT:
@@ -36,13 +35,13 @@ def test_every_route_turns_away_a_visitor_without_a_session(anon, conn, board, m
         assert (page.status_code, page.headers["location"]) == (303, "/login")
     else:
         assert page.status_code == 401
-    # htmx would follow a real redirect inside the XHR, so it gets told to leave instead.
+    # htmx requests get HX-Redirect instead of a redirect.
     assert (htmx.status_code, htmx.headers["hx-redirect"]) == (401, "/login")
     assert version(conn, board.id) == 0  # and nothing was written
 
 
 def test_protected_routes_are_found():
-    """Guards the test above against passing vacuously."""
+    """Checks the route list used above isn't empty or missing routes."""
     urls = {url for _, url in protected_requests()}
     assert {"/", "/boards/1", "/boards/1/poll", "/cards/reorder", "/checklist/1"} <= urls
 
@@ -57,7 +56,7 @@ def test_the_login_page_needs_no_login(anon):
 
 @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
 def test_api_docs_are_not_served(anon, path):
-    """They sit outside the dependency system, so the login guard wouldn't cover them."""
+    """FastAPI serves these outside the dependency system, so login wouldn't protect them."""
     assert anon.get(path, follow_redirects=False).status_code in (303, 404)
     assert "openapi" not in anon.get(path).text.lower()
 
@@ -111,7 +110,7 @@ def session_cookie(secret: str, session: dict) -> str:
 
 
 def test_a_session_signed_with_another_key_is_ignored(conn):
-    """So rotating SECRET_KEY logs every device out."""
+    """Changing SECRET_KEY logs every device out."""
     visitor = make_client()
     visitor.cookies.set("session", session_cookie("some-other-key", {"logged_in": True}))
 
@@ -127,7 +126,7 @@ def test_a_hand_edited_cookie_is_ignored(conn):
 
 
 def test_the_forged_cookie_helper_is_faithful(conn):
-    """Guards the two tests above: a cookie signed with the real key does work."""
+    """Checks session_cookie itself: with the real key, the cookie works."""
     visitor = make_client()
     visitor.cookies.set("session", session_cookie("test-secret-key", {"logged_in": True}))
 

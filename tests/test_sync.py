@@ -64,8 +64,8 @@ def test_editing_a_deleted_card_404s(client, conn, board):
 def writes(board):
     """Every write path that should bump the board's version, as request kwargs.
 
-    New endpoints belong here: forgetting the bump is the bug this catches, and
-    it leaves other people's boards silently stale rather than visibly broken.
+    Add new endpoints here. A missing bump means other people's boards don't
+    update, with no visible error.
     """
     card = board.cards[0]
     return [

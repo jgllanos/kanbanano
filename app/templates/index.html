@@ -3,7 +3,7 @@
 {% block body %}
 <header class="topbar">
   <a href="/" class="brand">Kanbanano</a>
-  {# Only here, not on boards: with a year-long session it's rarely needed. #}
+  {# Only on this page. Sessions last a year, so it's rarely needed. #}
   <form class="logout" method="post" action="/logout">
     <button type="submit">Log out</button>
   </form>
@@ -12,7 +12,7 @@
 <main class="board-index">
   <h1>Boards</h1>
 
-  {# The server answers with a redirect to the new board, so there's nothing to swap. #}
+  {# The server responds with an HX-Redirect to the new board. #}
   <form class="board-create" hx-post="/boards" hx-swap="none">
     <input type="text" name="title" required maxlength="100" autocomplete="off"
            placeholder="New board title" aria-label="New board title">
@@ -28,7 +28,7 @@
         </a>
       </li>
     {% else %}
-      <li class="empty">No boards yet — create one above.</li>
+      <li class="empty">No boards yet.</li>
     {% endfor %}
   </ul>
 </main>

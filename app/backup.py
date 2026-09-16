@@ -2,10 +2,9 @@
 
     python -m app.backup > board-backup.db
 
-Meant to be run inside the container (backup.sh does that), since the database
-lives in a Docker volume the host can't easily read. Safe while the app is
-running: VACUUM INTO takes a snapshot, so writes landing mid-backup don't end
-up half in the copy. The copy is a single self-contained file, and compacted.
+backup.sh runs this inside the container, because the database is in a Docker
+volume. It's safe while the app is running: VACUUM INTO copies a consistent
+snapshot into a single, compacted file.
 """
 
 import shutil

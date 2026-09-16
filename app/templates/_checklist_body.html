@@ -1,7 +1,6 @@
-{# The changing half of the checklist: the progress count and the items. Every
-   checklist write replaces this whole block, which keeps the count and the
-   ticked boxes in step with each other and with the server. The add-item form
-   is outside it, in _checklist.html, so it keeps focus between items. #}
+{# The part of the checklist that every write replaces: the progress count and
+   the items. The add-item form is outside it (in _checklist.html) so it keeps
+   focus. #}
 <div id="checklist-body">
   <div class="section-heading">
     <h3>Checklist</h3>
@@ -12,21 +11,20 @@
     {% endif %}
   </div>
 
-  {# No <form> around an item: htmx doesn't inherit hx-patch, and a form-level
-     `change` trigger would fire for the checkbox too, on top of its own request. #}
+  {# No <form> per item: htmx doesn't inherit hx-patch, and a form-level change
+     trigger would also fire when the checkbox changes. #}
   <ul class="checklist-items">
     {% for item in items %}
       <li class="checklist-item {{ 'is-done' if item.done }}">
-        {# `done` is sent as the value to set, not as a toggle, so a stale modal
-           can't untick what someone else just ticked — as for labels. #}
+        {# `done` is the value to set, so a stale modal can't undo someone else's
+           change. #}
         <input type="checkbox" class="checklist-tick" {{ "checked" if item.done }}
                aria-label="{{ item.text }}"
                hx-patch="/checklist/{{ item.id }}" hx-vals='{"done": {{ 0 if item.done else 1 }}}'
                hx-target="#checklist-body" hx-swap="outerHTML">
 
-        {# `change` fires only on a real edit, so tabbing through sends nothing.
-           Escape reverts to the value attribute, which this block's re-render
-           keeps current. #}
+        {# Saves on change, so tabbing through sends nothing. Escape reverts to
+           the value attribute, which is current because writes re-render this. #}
         <input type="text" name="text" value="{{ item.text }}" required maxlength="200"
                class="checklist-text" aria-label="Checklist item" autocomplete="off"
                hx-patch="/checklist/{{ item.id }}" hx-trigger="change"

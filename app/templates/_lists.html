@@ -3,9 +3,9 @@
     {% include "_list.html" %}
   {% endfor %}
 
-  {# Inside the container so it scrolls with the lists. It isn't a .list, so it's
-     never draggable, and app.js keeps lists from being dropped past it. New lists
-     are inserted just before it. #}
+  {# Inside the container so it scrolls with the lists. It isn't a .list, so it
+     can't be dragged, and app.js stops lists being dropped after it. New lists
+     are inserted before it. #}
   <div id="add-list" class="add-list" x-data="addList">
     <button type="button" class="add-list-open" x-show="!composing" @click="open()">
       + Add a list

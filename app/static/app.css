@@ -31,7 +31,7 @@ body {
 .board-page .topbar { background: rgb(0 0 0 / var(--board-shade)); color: rgb(var(--board-ink)); }
 .brand { font-weight: 700; color: inherit; text-decoration: none; }
 
-/* The board title is an input styled to read as the heading it stands in for. */
+/* The board title is an input styled as a heading. */
 .board-rename { display: flex; min-width: 0; }
 .board-title {
   width: 14rem;
@@ -60,10 +60,9 @@ body {
   top: calc(100% + 0.375rem);
   right: 0;
   z-index: 10;
-  /* Wide on purpose. The browser opens the native colour picker from the left
-     edge of its input, extending right, and nothing in CSS can move it; this
-     width keeps that edge far enough from the window's right side for the
-     picker to fit. min() keeps the panel inside a narrow window. */
+  /* Wide enough for the browser's color picker, which opens rightwards from the
+     input's left edge and can't be positioned with CSS. min() keeps the panel
+     inside narrow windows. */
   width: min(20rem, calc(100vw - 2rem));
   padding: 0.75rem;
   border-radius: 8px;
@@ -222,10 +221,9 @@ body {
 
 /* ---- Board view ---- */
 
-/* --board-bg, --board-ink and --board-shade are set by a <style> the server
-   renders into the settings menu (see _board_menu.html), so a colour change is
-   one small swap. --board-ink is the text colour for anything sitting directly
-   on the background, white or dark depending on how light the background is. */
+/* --board-bg, --board-ink and --board-shade are set by a <style> in the settings
+   menu (_board_menu.html). --board-ink is the text color on the background:
+   white, or dark on light backgrounds. */
 .board-page {
   min-height: 100vh;
   display: flex;
@@ -424,8 +422,7 @@ button.danger:hover { background: #ffeceb; }
   color: var(--muted);
   font-size: 0.75rem;
 }
-/* inline-flex rather than a baseline nudge: the icon then centres against the
-   digits whatever the font does. */
+/* inline-flex centers the icon against the digits regardless of the font. */
 .checklist-badge {
   display: inline-flex;
   align-items: center;
@@ -579,8 +576,7 @@ button.danger:hover { background: #ffeceb; }
 .checklist-text:hover { background: rgb(9 30 66 / 0.06); }
 .checklist-text:focus { background: #fff; outline: 2px solid #0c66e4; outline-offset: -1px; }
 .checklist-item.is-done .checklist-text { color: var(--muted); text-decoration: line-through; }
-/* Only while the row is hovered or something in it has focus, so the column of
-   ✕s doesn't compete with the text. */
+/* Only shown while the row is hovered or has focus, to keep the list uncluttered. */
 .checklist-delete {
   flex: none;
   padding: 0.125rem 0.375rem;

@@ -20,52 +20,47 @@ BASE_DIR = Path(__file__).parent
 
 
 def required_env(name: str) -> str:
-    """An environment variable the app can't run without. Fails at startup, loudly,
-    rather than on the first login attempt."""
+    """Read a required environment variable, failing at startup if it's unset."""
     value = os.environ.get(name, "")
     if not value:
         raise RuntimeError(f"The {name} environment variable must be set")
     return value
 
 
-# One shared password for everyone. There are no user accounts: "who am I" is a
-# per-device preference in the header, not something the server knows.
+# The shared password everyone logs in with. There are no user accounts.
 BOARD_PASSWORD = required_env("BOARD_PASSWORD")
 # Signs the session cookie. Changing it logs every device out.
 SECRET_KEY = required_env("SECRET_KEY")
-# The session cookie is Secure by default, since Tailscale Serve terminates TLS
-# in front. Browsers won't send a Secure cookie over plain HTTP (localhost aside),
-# so reaching the app by LAN IP without TLS would loop back to the login page
-# forever. ALLOW_HTTP=1 drops the flag for that setup.
+# The session cookie is marked Secure, and browsers only send those back over
+# HTTPS or to localhost. ALLOW_HTTP=1 turns that off for serving over plain HTTP.
 ALLOW_HTTP = os.environ.get("ALLOW_HTTP") == "1"
 
-SESSION_MAX_AGE = 365 * 24 * 60 * 60  # typed once per device
+SESSION_MAX_AGE = 365 * 24 * 60 * 60  # one year
 
-# Paths reachable without logging in. Static files aren't listed because they're
-# a mount, which app-wide dependencies never reach, so they're always open: the
-# login page needs its stylesheet.
+# Paths that don't need a login. Static files are always public: they're a
+# mount, and app-wide dependencies don't apply to mounts.
 LOGIN_EXEMPT = {"/login", "/logout"}
 
 
 def require_login(request: Request) -> None:
-    """App-wide dependency: turn away anyone without a logged-in session.
+    """App-wide dependency that rejects requests without a logged-in session.
 
-    Applied to the whole app rather than route by route, so a new route is
-    protected unless it's deliberately added to LOGIN_EXEMPT.
+    It applies to every route, so new routes are protected unless they're added
+    to LOGIN_EXEMPT.
     """
     if request.url.path in LOGIN_EXEMPT or request.session.get("logged_in"):
         return
     if "HX-Request" in request.headers:
-        # An ordinary redirect would be followed inside the XHR, and the login
-        # page swapped into whatever the request was targeting. HX-Redirect makes
-        # htmx send the whole page there instead. This is also how an open board
-        # notices, on its next poll, that the session has gone.
+        # htmx would follow a normal redirect inside the request and swap the
+        # login page into the target. HX-Redirect navigates the whole page.
         raise HTTPException(
-            status_code=401, detail="Please log in again", headers={"HX-Redirect": "/login"}
+            status_code=401,
+            detail="Your session has expired. Log in again.",
+            headers={"HX-Redirect": "/login"},
         )
     if request.method == "GET":
         raise HTTPException(status_code=303, headers={"Location": "/login"})
-    raise HTTPException(status_code=401, detail="Please log in again")
+    raise HTTPException(status_code=401, detail="Your session has expired. Log in again.")
 
 
 @asynccontextmanager
@@ -78,8 +73,8 @@ async def lifespan(app: FastAPI):
     yield
 
 
-# No /docs or /openapi.json: those are added outside the dependency system, so
-# require_login wouldn't cover them, and nothing here needs them.
+# The API docs are turned off. FastAPI serves them outside the dependency system,
+# so require_login wouldn't protect them.
 app = FastAPI(
     lifespan=lifespan,
     dependencies=[Depends(require_login)],
@@ -107,11 +102,10 @@ async def revalidate_static_files(request: Request, call_next):
 
 @app.middleware("http")
 async def report_board_version(request: Request, call_next):
-    """Tell the client which board version its own change produced.
+    """Send the board version a write produced, in an X-Board-Version header.
 
-    Every write bumps the board version, so without this the client's next poll
-    would see a new version and refetch the board just to show a change it's
-    already showing. See adoptVersion in app.js for how the client uses it.
+    The client uses it to avoid refetching its own change on the next poll (see
+    adoptVersion in app.js).
     """
     response = await call_next(request)
     conn = getattr(request.state, "db", None)
@@ -120,10 +114,9 @@ async def report_board_version(request: Request, call_next):
     return response
 
 
-# Added after the middleware above, so it wraps them and the session is decoded
-# before anything else looks at the request. The cookie is signed, not encrypted:
-# it holds nothing but the logged-in flag. Starlette re-issues it on every
-# response, so the year runs from a device's last visit, not its login.
+# Added last so it runs first, before anything reads the session. The cookie is
+# signed but not encrypted, and only holds the logged-in flag. Starlette re-sends
+# it on every response, so the year counts from a device's last visit.
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
@@ -144,9 +137,9 @@ templates.env.globals["BOARD_COLORS"] = db.BOARD_COLORS
 
 
 def clean_text(value: str, what: str) -> str:
-    """Titles and names are one line: collapse pasted newlines and runs of spaces.
+    """Collapse whitespace, including pasted newlines, to single spaces.
 
-    400 if nothing is left; `what` names the field in the message the user sees.
+    Raises 400 if nothing is left. `what` names the field in the error message.
     """
     value = " ".join(value.split())
     if not value:
@@ -175,8 +168,8 @@ def attach_labels(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
 def attach_progress(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
     """Give each card dict `checklist_done` and `checklist_total`. One query.
 
-    Counts, not the items themselves: this is what the card face shows. The
-    modal loads the full checklist separately with load_checklist.
+    These are the counts shown on the card face. The modal loads the items
+    themselves with load_checklist.
     """
     by_id = {card["id"]: card for card in cards}
     for card in cards:
@@ -203,7 +196,7 @@ def load_checklist(conn: sqlite3.Connection, card_id: int) -> list[sqlite3.Row]:
 
 
 def load_item(conn: sqlite3.Connection, item_id: int) -> sqlite3.Row:
-    """One checklist item, with the board it hangs off for the version bump."""
+    """One checklist item, plus its board_id for the version bump."""
     item = conn.execute(
         """
         SELECT checklist_items.*, lists.board_id
@@ -220,7 +213,7 @@ def load_item(conn: sqlite3.Connection, item_id: int) -> sqlite3.Row:
 
 
 def load_board(conn: sqlite3.Connection, board_id: int) -> sqlite3.Row:
-    """One board. 404 if it's been deleted, which also covers a made-up URL."""
+    """One board. 404 if it doesn't exist."""
     board = conn.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
     if board is None:
         raise HTTPException(status_code=404, detail="This board was deleted")
@@ -301,8 +294,8 @@ def board_labels(conn: sqlite3.Connection, board_id: int) -> dict[str, list]:
 
 
 def check_color(color: str) -> None:
-    # Label colors are rendered into style attributes, so this is also what
-    # keeps arbitrary CSS out of the page.
+    # Label colors go into style attributes, so this also keeps arbitrary CSS
+    # out of the page.
     if color not in db.LABEL_COLORS.values():
         raise HTTPException(status_code=400, detail="Pick a color from the palette")
 
@@ -311,11 +304,11 @@ HEX_COLOR = re.compile(r"#[0-9a-f]{6}", re.IGNORECASE)
 
 
 def clean_background(color: str) -> str:
-    """A board background: any #rrggbb color, lower-cased. 400 for anything else.
+    """Validate a board background: any #rrggbb color, returned lower-cased.
 
-    Deliberately strict. The value is written into a <style> element, where
-    Jinja's autoescape is no protection: `red; } body { display: none }` has no
-    HTML-special characters to escape. Six hex digits admit no way out of it.
+    The value is written into a <style> element, where HTML escaping doesn't
+    help (`red; } body { display: none }` has nothing to escape), so only exact
+    hex colors are accepted.
     """
     if not HEX_COLOR.fullmatch(color):
         raise HTTPException(status_code=400, detail="Pick a color")
@@ -334,12 +327,11 @@ def relative_luminance(color: str) -> float:
 
 
 def needs_dark_ink(background: str) -> bool:
-    """Whether text on this background should be dark rather than white.
+    """Whether text on this background should be dark instead of white.
 
-    White unless it falls below 3:1, WCAG's floor for large text and controls,
-    which is what sits on a board's background. Not simply "whichever contrasts
-    more": for mid-tones neither reaches 4.5:1, and that rule would flip half
-    the presets to dark text over margins as thin as 3.75 vs 3.76.
+    Text stays white unless its contrast drops below 3:1, the WCAG minimum for
+    large text and controls. Choosing whichever color has more contrast would
+    switch several presets to dark text over very small differences.
     """
     contrast_with_white = 1.05 / (relative_luminance(background) + 0.05)
     return contrast_with_white < 3
@@ -368,13 +360,11 @@ def login_page(request: Request):
 def login(request: Request, password: Annotated[str, Form()] = ""):
     """Check the shared password and start a session.
 
-    A plain form post rather than htmx: it's the one page that has to work
-    before anything else does. compare_digest so the time taken doesn't hint
-    at how much of a guess was right.
+    compare_digest takes the same time no matter how much of a guess matches.
     """
     if not secrets.compare_digest(password.encode(), BOARD_PASSWORD.encode()):
         return templates.TemplateResponse(
-            request, "login.html", {"error": "That's not the password."}, status_code=401
+            request, "login.html", {"error": "Wrong password."}, status_code=401
         )
     request.session["logged_in"] = True
     return RedirectResponse("/", status_code=303)
@@ -398,10 +388,10 @@ def board_index(request: Request, conn: sqlite3.Connection = Depends(db.get_db))
 def create_board(
     title: Annotated[str, Form()], conn: sqlite3.Connection = Depends(db.get_db)
 ):
-    """Create an empty board and send the browser straight to it.
+    """Create an empty board and redirect to it.
 
-    HX-Redirect rather than a 303 so a bad title comes back as a flash on the
-    index page like every other error, instead of a raw error page.
+    Uses HX-Redirect instead of a 303 so errors show up as a flash message, the
+    same as everywhere else.
     """
     title = clean_text(title, "Board title")
     with conn:
@@ -432,13 +422,11 @@ def update_board(
     background: Annotated[str | None, Form()] = None,
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
-    """Rename a board, or set its background. Send whichever one changed.
+    """Rename a board or set its background. Send whichever one changed.
 
-    The two answer with different fragments because they change different
-    things: a rename has to send back the header, so the title field's value
-    attribute — what Escape reverts to — stays current, the same reason a list's
-    does (see _list_header.html). A background only has to send back the menu,
-    which keeps it open for the next colour.
+    A rename returns the header, so the title field's value attribute (which
+    Escape reverts to) matches the saved title. A background change returns only
+    the settings menu, so the menu stays open.
     """
     if title is not None:
         title = clean_text(title, "Board title")
@@ -469,10 +457,10 @@ def update_board(
 
 @app.delete("/boards/{board_id}")
 def delete_board(board_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
-    """Delete a board and everything on it, then go back to the index.
+    """Delete a board and everything on it, then redirect to the index.
 
-    No version bump: the row is gone, so other clients' polls get the 286 that
-    tells them the board is no longer there.
+    There's no version to bump once the row is gone. Other clients' polls get a
+    286 instead.
     """
     with conn:
         load_board(conn, board_id)
@@ -484,11 +472,11 @@ def delete_board(board_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
 def poll_board(
     board_id: int, v: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
 ):
-    """204 if version `v` is current, otherwise the freshly rendered lists container.
+    """204 if version `v` is current, otherwise the re-rendered lists container.
 
-    The version is read before the lists, so a write landing in between makes
-    the content newer than its label, never older: at worst the next poll
-    fetches again, rather than missing a change.
+    The version is read before the lists. If a write lands in between, the
+    content is newer than the version sent with it, so the next poll fetches
+    again and no change is missed.
     """
     board = conn.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
     if board is None:
@@ -517,7 +505,7 @@ def create_list(
     title: Annotated[str, Form()],
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
-    """Append a list to the right-hand end of a board. Returns just the new list."""
+    """Add a list to the end of a board. Returns the new list's HTML."""
     title = clean_text(title, "List title")
     with conn:
         load_board(conn, board_id)
@@ -541,7 +529,7 @@ def update_list(
     title: Annotated[str, Form()],
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
-    """Rename a list. Returns the list's header, which replaces itself."""
+    """Rename a list. Returns the re-rendered list header."""
     title = clean_text(title, "List title")
     with conn:
         lst = load_list(conn, list_id)
@@ -554,7 +542,7 @@ def update_list(
 
 @app.delete("/lists/{list_id}", response_class=HTMLResponse)
 def delete_list(list_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
-    """Delete a list and its cards. Empty 200 for the same reason as delete_card."""
+    """Delete a list and its cards. Returns an empty 200, like delete_card."""
     with conn:
         lst = load_list(conn, list_id)
         conn.execute("DELETE FROM lists WHERE id = ?", (list_id,))
@@ -569,7 +557,7 @@ def create_card(
     title: Annotated[str, Form()],
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
-    """Append a card to the bottom of a list. Returns just the new card's HTML."""
+    """Add a card to the bottom of a list. Returns the new card's HTML."""
     title = clean_text(title, "Card title")
     with conn:
         lst = load_list(conn, list_id)
@@ -593,16 +581,15 @@ def rewrite_positions(
     ordered_ids: list[int],
     exclude: Iterable[int] = (),
 ) -> None:
-    """Renumber a parent's children 0, 1, 2…, with `ordered_ids` first, in that order.
+    """Renumber a parent's children 0, 1, 2…, starting with `ordered_ids` in order.
 
-    `ordered_ids` are moved under the parent if they aren't there already; the
-    caller must have checked they belong to the same board. Children the client
-    didn't know about (e.g. added by someone else since its page loaded) follow
-    in their existing order, so positions stay contiguous. `exclude` holds ids
-    being placed under a different parent in the same request.
+    `ordered_ids` are moved under the parent if needed; the caller must check
+    they're on the same board. Children not in `ordered_ids` (for example, added
+    by someone else since the page loaded) go after them in their current order.
+    `exclude` holds ids the same request is moving to another parent.
 
-    All position writes for drags go through here. Moves deliberately leave
-    cards.updated_at alone: it's the conflict token for description edits.
+    Every drag writes positions through here. Moves don't change
+    cards.updated_at, which is the conflict token for description edits.
     """
     skip = {*ordered_ids, *exclude}
     leftovers = [
@@ -714,8 +701,8 @@ def update_card(
     """Save the modal's title and description.
 
     `updated_at` is the value the modal was loaded with. If the card has been
-    saved since, reject with 409 rather than silently overwrite that edit.
-    Returns the new card face and updated_at, both swapped out-of-band.
+    saved since, the save is rejected with a 409 so it doesn't overwrite that
+    edit. Returns the new card face and updated_at, swapped in out-of-band.
     """
     title = clean_text(title, "Card title")
     description = "\n".join(description.splitlines()).strip()  # browsers send \r\n
@@ -745,9 +732,9 @@ def update_card(
 def delete_card(card_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
     """Delete a card.
 
-    Responds 200 with an empty body, not 204: htmx skips the swap on a 204, and
-    the swap is what removes the card from the board. The gap this leaves in the
-    list's positions is harmless; the next drag in that list renumbers it.
+    Returns an empty 200 because htmx skips swapping on a 204, and the swap is
+    what removes the card from the page. The gap left in the list's positions
+    doesn't affect the order, and the next drag in that list renumbers it.
     """
     with conn:
         card = load_card(conn, card_id)
@@ -794,8 +781,11 @@ def add_card_label(
     label_id: Annotated[int, Form()],
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
-    """Assign a label or person to a card. Idempotent, so a stale modal can't
-    accidentally undo someone else's change the way a toggle could."""
+    """Assign a label or person to a card.
+
+    This is idempotent instead of a toggle, so a stale modal can't undo someone
+    else's change.
+    """
     with conn:
         card = load_card(conn, card_id)
         label = get_label(conn, label_id, card["board_id"])
@@ -833,8 +823,8 @@ def create_label(
 ):
     """Create a label or person on a card's board and assign it to that card.
 
-    Takes a card rather than a board because labels are created from the card
-    modal. Labels pick a palette color; people get the next one automatically.
+    Labels are created from the card modal, so this takes a card and uses its
+    board. Labels pick a palette color; people get the next one automatically.
     """
     name = clean_text(name, "Name")
     if kind == "label":
@@ -917,12 +907,10 @@ def delete_label(
 
 
 def checklist_body(request: Request, conn: sqlite3.Connection, card_id: int):
-    """Re-render the modal's checklist after a change.
+    """The response to every checklist write.
 
-    Every checklist write answers with this: the progress count and the items,
-    plus the card's face out-of-band, since the face shows the same count. The
-    add-item form sits outside this block, so it keeps focus and whatever is
-    half-typed in it.
+    Re-renders the modal's checklist, plus the card face out-of-band, since it
+    shows the same done/total count.
     """
     return templates.TemplateResponse(
         request,
@@ -962,11 +950,10 @@ def update_checklist_item(
     text: Annotated[str | None, Form()] = None,
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
-    """Tick an item off, or edit its text. Send whichever one changed.
+    """Tick an item or edit its text. Send whichever one changed.
 
-    `done` is sent as the value to set rather than as a toggle, so a stale modal
-    ticking a box can't untick what someone else just ticked — the same reason
-    the label endpoints are idempotent.
+    `done` is the value to set. A toggle would let a stale modal undo someone
+    else's change; the label endpoints avoid toggles for the same reason.
     """
     if text is not None:
         text = clean_text(text, "Checklist item")
@@ -988,7 +975,7 @@ def update_checklist_item(
 def delete_checklist_item(
     item_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
 ):
-    """Delete a checklist item. The gap left in positions is harmless, as for cards."""
+    """Delete a checklist item. As with cards, the gap left in positions is fine."""
     with conn:
         item = load_item(conn, item_id)
         conn.execute("DELETE FROM checklist_items WHERE id = ?", (item_id,))

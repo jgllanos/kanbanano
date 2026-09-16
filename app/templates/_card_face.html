@@ -14,9 +14,8 @@
     {% endif %}
     {% if card.checklist_total %}
       {% set complete = card.checklist_done == card.checklist_total %}
-      {# The tick is drawn rather than typed: a glyph like ☑ comes from whichever
-         fallback font has it, at whatever size that font thinks, which doesn't
-         match the digits next to it. This one is 1em of currentColor. #}
+      {# An SVG because a ☑ character comes from a fallback font and doesn't
+         match the size of the digits. #}
       <span class="card-badge checklist-badge {{ 'is-complete' if complete }}"
             title="Checklist" aria-label="Checklist: {{ card.checklist_done }} of {{ card.checklist_total }} done">
         <svg class="badge-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">

@@ -58,7 +58,7 @@ def test_adding_an_item_to_a_deleted_card_404s(client, board):
 
 
 def test_ticking_sends_the_value_to_set_not_a_toggle(client, conn, card):
-    """Two clients with the same stale modal must agree on the result."""
+    """Two clients ticking the same item both leave it done."""
     item = item_ids(conn, card)[1]
 
     client.patch(f"/checklist/{item}", data={"done": 1})
@@ -128,10 +128,9 @@ def test_every_checklist_write_bumps_the_version(client, conn, board):
     assert version(conn, board.id) == before + 3
 
 
-# ---- What actually reaches the page ---------------------------------------
-# The count is the point of the feature, so these two check the markup rather
-# than the database: that it reaches the board, and that a write updates the
-# face of the card it belongs to as well as the modal.
+# ---- Rendered output ------------------------------------------------------
+# These check the markup: that the count appears on the board, and that a write
+# updates the card face as well as the modal.
 
 
 def test_the_board_shows_progress_on_the_card_face(client, conn, board, card):
@@ -153,7 +152,7 @@ def test_a_write_also_returns_the_card_face(client, conn, card):
 
 
 def test_the_modal_renders_without_an_out_of_band_face(client, conn, card):
-    """The face swap belongs to writes only; opening a card shouldn't cause one."""
+    """Only writes swap the card face; opening a card doesn't."""
     modal = client.get(f"/cards/{card}").text
 
     assert "Washer" in modal

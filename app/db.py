@@ -22,9 +22,9 @@ LABEL_COLORS = {
     "gray": "#8590a2",
 }
 
-# Preset board backgrounds, offered as swatches beside a free color picker. Any
-# #rrggbb is allowed (see main.clean_background); these are just quick picks,
-# deep enough that the board's text stays white on all of them.
+# Preset board backgrounds, shown as swatches next to the color picker. Any
+# #rrggbb color is allowed (see main.clean_background). The board's text stays
+# white on all of these.
 BOARD_COLORS = {
     "blue": "#0079bf",
     "teal": "#0098b7",
@@ -45,8 +45,8 @@ class Connection(sqlite3.Connection):
 
 
 def connect(path: Path | None = None) -> Connection:
-    # DB_PATH is read here rather than defaulted in the signature so that tests
-    # can point the whole app at a scratch database.
+    # DB_PATH is read at call time so tests can point the app at a temporary
+    # database.
     #
     # check_same_thread=False: FastAPI may run a sync dependency and the endpoint
     # using it on different threadpool threads. Each request still gets its own

@@ -13,8 +13,8 @@
       </button>
     </div>
 
-    {# Saves on `change`, i.e. whenever a field loses focus after an edit. That
-       includes the modal closing, so closing mid-edit saves rather than discards. #}
+    {# Saves on change, when a field loses focus after an edit. Closing the modal
+       triggers it too, so closing mid-edit saves. #}
     <form class="card-form" hx-patch="/cards/{{ card.id }}" hx-trigger="change" hx-swap="none">
       <input type="hidden" id="card-updated-at" name="updated_at" value="{{ card.updated_at }}">
       <textarea name="title" id="card-modal-title" class="modal-title" rows="1" required

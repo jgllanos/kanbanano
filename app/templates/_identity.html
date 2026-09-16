@@ -1,6 +1,6 @@
-{# The header's "I am" picker and "Assigned to me" filter. State lives in
-   localStorage (see the identity component in app.js), so re-rendering this
-   out-of-band when people change loses nothing. #}
+{# The header's "I am" picker and "Assigned to me" filter. Their state is in
+   localStorage (see the identity component in app.js), so re-rendering this is
+   safe. #}
 <div id="identity" class="identity" x-data="identity({{ board_id }})" {% if oob %}hx-swap-oob="true"{% endif %}>
   <label class="identity-picker">
     I am

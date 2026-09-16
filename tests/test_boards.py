@@ -8,7 +8,7 @@ from conftest import card_order, list_order, version
 
 
 def test_pages_render(client, board):
-    """A smoke test: enough to catch a template that no longer compiles."""
+    """Smoke test for template errors."""
     index = client.get("/")
     assert index.status_code == 200 and "Create board" in index.text
 
@@ -56,7 +56,7 @@ def test_set_the_background(client, conn, board):
 
     assert conn.execute("SELECT background FROM boards").fetchone()[0] == "#b04632"
     assert version(conn, board.id) == before + 1
-    # The menu comes back rather than the header, so it stays open for the next try.
+    # Only the menu is returned, so it stays open.
     assert 'id="board-menu-panel"' in response.text
 
 
@@ -67,17 +67,17 @@ def test_the_background_reaches_the_page(client, board):
     assert "#b04632" in client.get("/").text  # the tile on the index
 
 
-def test_any_hex_colour_is_accepted_and_lower_cased(client, conn, board):
+def test_any_hex_color_is_accepted_and_lower_cased(client, conn, board):
     client.patch(f"/boards/{board.id}", data={"background": "#A1B2C3"})
 
     assert conn.execute("SELECT background FROM boards").fetchone()[0] == "#a1b2c3"
 
 
-def test_anything_but_a_hex_colour_is_rejected(client, conn, board):
-    """Backgrounds are written into a stylesheet, where autoescape doesn't help."""
+def test_anything_but_a_hex_color_is_rejected(client, conn, board):
+    """Backgrounds go into a stylesheet, where HTML escaping doesn't help."""
     bad = [
         "red",
-        "#fff",  # shorthand: valid CSS, but not what the colour input sends
+        "#fff",  # valid CSS, but the color input never sends shorthand
         "#12345",
         "#1234567",
         "#12345g",
@@ -115,7 +115,7 @@ def test_a_light_background_gets_dark_text(client, board):
     assert "dark-ink" in client.get("/").text  # the tile on the index
 
 
-def test_renaming_and_recolouring_leave_each_other_alone(client, conn, board):
+def test_renaming_and_recoloring_leave_each_other_alone(client, conn, board):
     client.patch(f"/boards/{board.id}", data={"background": "#519839"})
     client.patch(f"/boards/{board.id}", data={"title": "House"})
 
