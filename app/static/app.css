@@ -50,25 +50,45 @@ body {
 .board-title:hover { background: rgb(var(--board-ink) / 0.15); }
 .board-title:focus { background: #fff; color: var(--text); outline: none; }
 
-/* Board settings menu */
-.board-menu { position: relative; }
-.board-menu-open { color: rgb(var(--board-ink) / 0.8); }
-.board-menu-open:hover,
-.board-menu-open[aria-expanded="true"] { background: rgb(var(--board-ink) / 0.2); color: rgb(var(--board-ink)); }
-.board-menu-panel {
+/* ---- Menus: board settings and list settings ---- */
+
+.menu { position: relative; }
+.menu-panel {
   position: absolute;
   top: calc(100% + 0.375rem);
   right: 0;
   z-index: 10;
+  min-width: 10rem;
+  padding: 0.375rem;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
+}
+.menu-item.is-danger { color: #ae2e24; }
+.menu-item.is-danger:hover { background: #ffeceb; }
+.menu-divider {
+  margin: 0.5rem 0;
+  border: none;
+  border-top: 1px solid rgb(9 30 66 / 0.12);
+}
+
+/* Board settings */
+.board-menu-open { color: rgb(var(--board-ink) / 0.8); }
+.board-menu-open:hover,
+.board-menu-open[aria-expanded="true"] { background: rgb(var(--board-ink) / 0.2); color: rgb(var(--board-ink)); }
+.board-menu-panel {
   /* Wide enough for the browser's color picker, which opens rightwards from the
      input's left edge and can't be positioned with CSS. min() keeps the panel
      inside narrow windows. */
   width: min(20rem, calc(100vw - 2rem));
   padding: 0.75rem;
-  border-radius: 8px;
-  background: #fff;
-  color: var(--text);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
 }
 .menu-heading {
   margin: 0 0 0.5rem;
@@ -114,18 +134,6 @@ body {
 }
 /* Outlined like a pressed swatch when the background isn't one of the presets. */
 .custom-color.is-selected input { outline: 2px solid #0c66e4; outline-offset: 2px; }
-
-.menu-item {
-  display: block;
-  width: 100%;
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid rgb(9 30 66 / 0.12);
-  border-radius: 0;
-  text-align: left;
-}
-.menu-item.is-danger { color: #ae2e24; }
-.menu-item.is-danger:hover { background: #ffeceb; }
 
 /* "I am" picker and "Assigned to me" filter */
 .identity {
@@ -276,12 +284,14 @@ body {
   color: inherit;
 }
 .list-rename input:focus { outline: 2px solid #0c66e4; }
-.list-delete {
-  padding: 0.125rem 0.375rem;
+.list-menu-open {
+  display: grid;
+  place-items: center;
+  padding: 0.25rem 0.375rem;
   color: var(--muted);
-  line-height: 1;
 }
-.list-delete:hover { background: #ffeceb; color: #ae2e24; }
+.list-menu-open[aria-expanded="true"] { background: rgb(9 30 66 / 0.08); color: var(--text); }
+.list-menu-open svg { width: 1rem; height: 1rem; fill: currentColor; }
 
 /* ---- "Add a list" column ---- */
 

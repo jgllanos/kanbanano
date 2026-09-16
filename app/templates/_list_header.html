@@ -1,8 +1,7 @@
-{# A list's heading (also its drag handle), rename field and delete button. A
+{# A list's heading (also its drag handle), rename field and settings menu. A
    rename re-renders this block, so Escape reverts to the saved title. #}
 <div class="list-header">
-  <h2 class="list-title" x-show="!renaming" title="Rename list"
-      @click="renaming = true; $nextTick(() => $refs.listTitle.select())">{{ list.title }}</h2>
+  <h2 class="list-title" x-show="!renaming">{{ list.title }}</h2>
 
   {# Saves on change, so nothing is sent if the title wasn't edited or Escape
      reverted it. #}
@@ -16,7 +15,25 @@
            @blur="renaming = false">
   </form>
 
-  <button type="button" class="list-delete" aria-label="Delete list"
-          hx-delete="/lists/{{ list.id }}" hx-target="closest .list" hx-swap="delete"
-          hx-confirm="Delete this list and all its cards? This can't be undone.">✕</button>
+  <div class="menu" x-data="menu" :class="{ 'is-open': open }"
+       @click.outside="open = false" @keydown.escape.prevent="close()">
+    <button type="button" class="list-menu-open" x-ref="menuButton" @click="open = !open"
+            aria-label="List settings" title="List settings" :aria-expanded="open.toString()">
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/>
+      </svg>
+    </button>
+    <div class="menu-panel" x-show="open" x-cloak>
+      {# renaming and $refs.listTitle belong to the list, which encloses this menu. #}
+      <button type="button" class="menu-item"
+              @click="open = false; renaming = true; $nextTick(() => $refs.listTitle.select())">
+        Rename list
+      </button>
+      <button type="button" class="menu-item is-danger"
+              hx-delete="/lists/{{ list.id }}" hx-target="closest .list" hx-swap="delete"
+              hx-confirm="Delete this list and all its cards? This can't be undone.">
+        Delete list
+      </button>
+    </div>
+  </div>
 </div>

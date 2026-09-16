@@ -17,9 +17,9 @@
      also be swapped on its own. #}
   {% with board_id=board.id, oob=False %}{% include "_identity.html" %}{% endwith %}
 
-  <div class="board-menu" x-data="{ open: false }" @click.outside="open = false"
-       @keydown.escape.prevent="open = false">
-    <button type="button" class="board-menu-open" @click="open = !open"
+  <div class="menu" x-data="menu" :class="{ 'is-open': open }"
+       @click.outside="open = false" @keydown.escape.prevent="close()">
+    <button type="button" class="board-menu-open" x-ref="menuButton" @click="open = !open"
             :aria-expanded="open.toString()">Board settings</button>
     {% include "_board_menu.html" %}
   </div>

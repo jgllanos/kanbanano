@@ -6,7 +6,7 @@
    so CSS can add alpha. --board-shade darkens the header. #}
 {% set dark_ink = board.background | needs_dark_ink %}
 {% set is_preset = board.background in BOARD_COLORS.values() %}
-<div id="board-menu-panel" class="board-menu-panel" x-show="open" x-cloak>
+<div id="board-menu-panel" class="menu-panel board-menu-panel" x-show="open" x-cloak>
   <style>
     .board-page {
       --board-bg: {{ board.background }};
@@ -35,6 +35,8 @@
            hx-target="#board-menu-panel" hx-swap="outerHTML">
     Custom color
   </label>
+
+  <hr class="menu-divider">
 
   {# The confirm text doesn't name the board because renaming doesn't re-render
      this panel. #}

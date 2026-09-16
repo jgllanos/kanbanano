@@ -1,5 +1,12 @@
 // Client code for Kanbanano. Plain script, no build step. Loaded before Alpine.
 
+// When htmx swaps in an element whose id is already on the page, it copies the
+// old element's class and style onto it, then restores the new element's own
+// attributes after settling. That restore removes the inline style Alpine's
+// x-show uses to hide things, so a closed menu that a poll re-rendered would pop
+// open. Settling only matters for CSS transitions, which this app doesn't use.
+htmx.config.attributesToSettle = [];
+
 // ---- Composers ------------------------------------------------------------
 // The card composer and the "add a list" composer stay on the page between
 // submissions, so they keep focus. This handles what they share: the field is
@@ -102,6 +109,26 @@ document.addEventListener("alpine:init", () => {
       composerForm(this.$refs.form, this.$refs.text, () =>
         this.$refs.form.scrollIntoView({ block: "nearest" }),
       );
+    },
+  }));
+
+  // ---- Menus --------------------------------------------------------------
+  // Board settings and list settings. An open menu holds back board refreshes,
+  // which would otherwise close it (see refreshBlocked), so closing one lets a
+  // waiting refresh through.
+
+  Alpine.data("menu", () => ({
+    open: false,
+
+    init() {
+      this.$watch("open", (open) => {
+        if (!open) refreshSoon();
+      });
+    },
+
+    close() {
+      this.open = false;
+      this.$refs.menuButton.focus();
     },
   }));
 
@@ -454,8 +481,8 @@ document.addEventListener("htmx:afterSwap", initSortables);
 //
 // A refresh is held back, and the board marked stale, when it would replace
 // something in use: a focused field inside the refreshed area (a composer, a
-// title field, the "I am" picker), a drag in progress, or one of our saves in
-// flight. It runs as soon as none of those apply. An open modal doesn't hold it
+// title field, the "I am" picker), an open menu, a drag in progress, or one of
+// our saves in flight. It runs as soon as none of those apply. An open modal doesn't hold it
 // back, because the modal is outside the refreshed area. A refresh keeps scroll
 // positions, composer drafts and focus (htmx restores focus by id).
 
@@ -480,6 +507,7 @@ function refreshBlocked() {
   const active = document.activeElement;
   return (
     (isTyping(active) && active.closest(REFRESHED_AREA) !== null) ||
+    document.querySelector(".menu.is-open")?.closest(REFRESHED_AREA) != null ||
     document.body.classList.contains("dragging") ||
     pendingWrites > 0
   );
