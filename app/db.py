@@ -22,6 +22,21 @@ LABEL_COLORS = {
     "gray": "#8590a2",
 }
 
+# Preset board backgrounds, offered as swatches beside a free color picker. Any
+# #rrggbb is allowed (see main.clean_background); these are just quick picks,
+# deep enough that the board's text stays white on all of them.
+BOARD_COLORS = {
+    "blue": "#0079bf",
+    "teal": "#0098b7",
+    "green": "#519839",
+    "olive": "#7f8a3c",
+    "orange": "#c17a22",
+    "red": "#b04632",
+    "purple": "#89609e",
+    "pink": "#c5558f",
+    "slate": "#344563",
+}
+
 
 class Connection(sqlite3.Connection):
     # The board version after this connection's last bump_version, if any.

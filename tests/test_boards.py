@@ -1,5 +1,9 @@
-"""Board and list CRUD."""
+"""Board and list CRUD, and board backgrounds."""
 
+import pytest
+
+from app import db
+from app.main import needs_dark_ink
 from conftest import card_order, list_order, version
 
 
@@ -43,6 +47,80 @@ def test_rename_board_bumps_the_version(client, conn, board):
 
     assert version(conn, board.id) == before + 1
     assert response.headers["x-board-version"] == str(before + 1)
+
+
+def test_set_the_background(client, conn, board):
+    before = version(conn, board.id)
+
+    response = client.patch(f"/boards/{board.id}", data={"background": "#b04632"})
+
+    assert conn.execute("SELECT background FROM boards").fetchone()[0] == "#b04632"
+    assert version(conn, board.id) == before + 1
+    # The menu comes back rather than the header, so it stays open for the next try.
+    assert 'id="board-menu-panel"' in response.text
+
+
+def test_the_background_reaches_the_page(client, board):
+    client.patch(f"/boards/{board.id}", data={"background": "#b04632"})
+
+    assert "--board-bg: #b04632" in client.get(f"/boards/{board.id}").text
+    assert "#b04632" in client.get("/").text  # the tile on the index
+
+
+def test_any_hex_colour_is_accepted_and_lower_cased(client, conn, board):
+    client.patch(f"/boards/{board.id}", data={"background": "#A1B2C3"})
+
+    assert conn.execute("SELECT background FROM boards").fetchone()[0] == "#a1b2c3"
+
+
+def test_anything_but_a_hex_colour_is_rejected(client, conn, board):
+    """Backgrounds are written into a stylesheet, where autoescape doesn't help."""
+    bad = [
+        "red",
+        "#fff",  # shorthand: valid CSS, but not what the colour input sends
+        "#12345",
+        "#1234567",
+        "#12345g",
+        "#0079bf\n",
+        "#0079bf; } body { display: none } .x {",
+        "url(javascript:alert(1))",
+    ]
+    for value in bad:
+        response = client.patch(f"/boards/{board.id}", data={"background": value})
+        assert response.status_code == 400, repr(value)
+
+    assert conn.execute("SELECT background FROM boards").fetchone()[0] == "#0079bf"
+    assert version(conn, board.id) == 0
+
+
+@pytest.mark.parametrize(
+    "background, dark",
+    [
+        *((hex_, False) for hex_ in db.BOARD_COLORS.values()),  # every preset keeps white text
+        ("#000000", False),
+        ("#ffffff", True),
+        ("#ffff00", True),  # yellow
+        ("#ffb3c6", True),  # a pastel pink
+        ("#8a8a8a", False),  # mid grey: white still clears 3:1
+    ],
+)
+def test_needs_dark_ink(background, dark):
+    assert needs_dark_ink(background) is dark
+
+
+def test_a_light_background_gets_dark_text(client, board):
+    client.patch(f"/boards/{board.id}", data={"background": "#ffff00"})
+
+    assert "--board-ink: 23 43 77" in client.get(f"/boards/{board.id}").text
+    assert "dark-ink" in client.get("/").text  # the tile on the index
+
+
+def test_renaming_and_recolouring_leave_each_other_alone(client, conn, board):
+    client.patch(f"/boards/{board.id}", data={"background": "#519839"})
+    client.patch(f"/boards/{board.id}", data={"title": "House"})
+
+    stored = conn.execute("SELECT title, background FROM boards").fetchone()
+    assert (stored["title"], stored["background"]) == ("House", "#519839")
 
 
 def test_delete_board_takes_its_lists_and_cards_with_it(client, conn, board):

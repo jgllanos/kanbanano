@@ -3,7 +3,9 @@
 {% block title %}{{ board.title }} · Kanbanano{% endblock %}
 
 {% block body %}
-<div class="board-page" style="background: {{ board.background }}">
+{# The background colour comes from a <style> in the settings menu, so changing
+   it is one small swap rather than a re-render of this whole page. #}
+<div class="board-page">
   {% include "_board_header.html" %}
 
   {# Polling swaps only #lists-container and #board-header, whose local state is

@@ -19,11 +19,10 @@
      hx-swap-oob would make htmx swap it a second time. #}
   {% with board_id=board.id, oob=False %}{% include "_identity.html" %}{% endwith %}
 
-  {# The confirm text deliberately doesn't name the board: this element isn't
-     re-rendered after a rename, so a name here could go stale. #}
-  <button type="button" class="delete-board"
-          hx-delete="/boards/{{ board.id }}"
-          hx-confirm="Delete this board? Every list and card on it goes too, and this can't be undone.">
-    Delete board
-  </button>
+  <div class="board-menu" x-data="{ open: false }" @click.outside="open = false"
+       @keydown.escape.prevent="open = false">
+    <button type="button" class="board-menu-open" @click="open = !open"
+            :aria-expanded="open.toString()">Board settings</button>
+    {% include "_board_menu.html" %}
+  </div>
 </header>

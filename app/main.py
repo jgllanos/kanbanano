@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 from collections.abc import Iterable
 from contextlib import asynccontextmanager
@@ -66,6 +67,7 @@ def initials(name: str) -> str:
 
 templates.env.filters["initials"] = initials
 templates.env.globals["LABEL_COLORS"] = db.LABEL_COLORS
+templates.env.globals["BOARD_COLORS"] = db.BOARD_COLORS
 
 
 def clean_text(value: str, what: str) -> str:
@@ -226,10 +228,51 @@ def board_labels(conn: sqlite3.Connection, board_id: int) -> dict[str, list]:
 
 
 def check_color(color: str) -> None:
-    # Colors are rendered into style attributes, so this is also what keeps
-    # arbitrary CSS out of the page.
+    # Label colors are rendered into style attributes, so this is also what
+    # keeps arbitrary CSS out of the page.
     if color not in db.LABEL_COLORS.values():
         raise HTTPException(status_code=400, detail="Pick a color from the palette")
+
+
+HEX_COLOR = re.compile(r"#[0-9a-f]{6}", re.IGNORECASE)
+
+
+def clean_background(color: str) -> str:
+    """A board background: any #rrggbb color, lower-cased. 400 for anything else.
+
+    Deliberately strict. The value is written into a <style> element, where
+    Jinja's autoescape is no protection: `red; } body { display: none }` has no
+    HTML-special characters to escape. Six hex digits admit no way out of it.
+    """
+    if not HEX_COLOR.fullmatch(color):
+        raise HTTPException(status_code=400, detail="Pick a color")
+    return color.lower()
+
+
+def relative_luminance(color: str) -> float:
+    """WCAG relative luminance of a #rrggbb color: 0 for black, 1 for white."""
+
+    def linear(channel: int) -> float:
+        c = channel / 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (int(color[i : i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+
+
+def needs_dark_ink(background: str) -> bool:
+    """Whether text on this background should be dark rather than white.
+
+    White unless it falls below 3:1, WCAG's floor for large text and controls,
+    which is what sits on a board's background. Not simply "whichever contrasts
+    more": for mid-tones neither reaches 4.5:1, and that rule would flip half
+    the presets to dark text over margins as thin as 3.75 vs 3.76.
+    """
+    contrast_with_white = 1.05 / (relative_luminance(background) + 0.05)
+    return contrast_with_white < 3
+
+
+templates.env.filters["needs_dark_ink"] = needs_dark_ink
 
 
 def get_label(conn: sqlite3.Connection, label_id: int, board_id: int) -> sqlite3.Row:
@@ -283,26 +326,42 @@ def board_view(
 def update_board(
     board_id: int,
     request: Request,
-    title: Annotated[str, Form()],
+    title: Annotated[str | None, Form()] = None,
+    background: Annotated[str | None, Form()] = None,
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
-    """Rename a board. Returns the header, which replaces itself.
+    """Rename a board, or set its background. Send whichever one changed.
 
-    The field's value attribute has to come back from the server for the same
-    reason as a list's — see _list_header.html.
+    The two answer with different fragments because they change different
+    things: a rename has to send back the header, so the title field's value
+    attribute — what Escape reverts to — stays current, the same reason a list's
+    does (see _list_header.html). A background only has to send back the menu,
+    which keeps it open for the next colour.
     """
-    title = clean_text(title, "Board title")
+    if title is not None:
+        title = clean_text(title, "Board title")
+    if background is not None:
+        background = clean_background(background)
+
     with conn:
-        load_board(conn, board_id)
-        conn.execute("UPDATE boards SET title = ? WHERE id = ?", (title, board_id))
+        board = load_board(conn, board_id)
+        conn.execute(
+            "UPDATE boards SET title = ?, background = ? WHERE id = ?",
+            (
+                board["title"] if title is None else title,
+                board["background"] if background is None else background,
+                board_id,
+            ),
+        )
         db.bump_version(conn, board_id)
+
+    board = load_board(conn, board_id)
+    if background is not None:
+        return templates.TemplateResponse(request, "_board_menu.html", {"board": board})
     return templates.TemplateResponse(
         request,
         "_board_header.html",
-        {
-            "board": load_board(conn, board_id),
-            "people": board_labels(conn, board_id)["person"],
-        },
+        {"board": board, "people": board_labels(conn, board_id)["person"]},
     )
 
 

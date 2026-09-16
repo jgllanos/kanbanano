@@ -28,7 +28,7 @@ body {
   background: #1d2125;
   color: #fff;
 }
-.board-page .topbar { background: rgb(0 0 0 / 0.25); }
+.board-page .topbar { background: rgb(0 0 0 / var(--board-shade)); color: rgb(var(--board-ink)); }
 .brand { font-weight: 700; color: inherit; text-decoration: none; }
 
 /* The board title is an input styled to read as the heading it stands in for. */
@@ -47,11 +47,86 @@ body {
   font-size: 1.1rem;
   font-weight: 600;
 }
-.board-title:hover { background: rgb(255 255 255 / 0.15); }
+.board-title:hover { background: rgb(var(--board-ink) / 0.15); }
 .board-title:focus { background: #fff; color: var(--text); outline: none; }
 
-.delete-board { color: rgb(255 255 255 / 0.75); }
-.delete-board:hover { background: #ae2e24; color: #fff; }
+/* Board settings menu */
+.board-menu { position: relative; }
+.board-menu-open { color: rgb(var(--board-ink) / 0.8); }
+.board-menu-open:hover,
+.board-menu-open[aria-expanded="true"] { background: rgb(var(--board-ink) / 0.2); color: rgb(var(--board-ink)); }
+.board-menu-panel {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  right: 0;
+  z-index: 10;
+  /* Wide on purpose. The browser opens the native colour picker from the left
+     edge of its input, extending right, and nothing in CSS can move it; this
+     width keeps that edge far enough from the window's right side for the
+     picker to fit. min() keeps the panel inside a narrow window. */
+  width: min(20rem, calc(100vw - 2rem));
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+}
+.menu-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+/* One row across the panel's full width. */
+.board-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(1.5rem, 1fr));
+  gap: 0.375rem;
+}
+.board-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 4px;
+  background: var(--board-color);
+}
+/* Two classes, so this beats the `button:hover` rule further down. */
+.board-swatch:hover { background: var(--board-color); filter: brightness(1.15); }
+.board-swatch[aria-pressed="true"] { outline: 2px solid #0c66e4; outline-offset: 2px; }
+
+.custom-color {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.custom-color input {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid rgb(9 30 66 / 0.25);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+/* Outlined like a pressed swatch when the background isn't one of the presets. */
+.custom-color.is-selected input { outline: 2px solid #0c66e4; outline-offset: 2px; }
+
+.menu-item {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(9 30 66 / 0.12);
+  border-radius: 0;
+  text-align: left;
+}
+.menu-item.is-danger { color: #ae2e24; }
+.menu-item.is-danger:hover { background: #ffeceb; }
 
 /* "I am" picker and "Assigned to me" filter */
 .identity {
@@ -69,8 +144,8 @@ body {
   border-radius: 4px;
   font: inherit;
 }
-.filter-mine { background: rgb(255 255 255 / 0.2); }
-.filter-mine:hover { background: rgb(255 255 255 / 0.3); }
+.filter-mine { background: rgb(var(--board-ink) / 0.2); }
+.filter-mine:hover { background: rgb(var(--board-ink) / 0.3); }
 .filter-mine[aria-pressed="true"] { background: #fff; color: var(--text); }
 .filter-mine:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -109,15 +184,21 @@ body {
   font-weight: 600;
   text-decoration: none;
 }
+.board-tile.dark-ink { color: var(--text); } /* a light background; see needs_dark_ink */
 .board-tile:hover { filter: brightness(0.92); }
 .empty { color: var(--muted); }
 
 /* ---- Board view ---- */
 
+/* --board-bg, --board-ink and --board-shade are set by a <style> the server
+   renders into the settings menu (see _board_menu.html), so a colour change is
+   one small swap. --board-ink is the text colour for anything sitting directly
+   on the background, white or dark depending on how light the background is. */
 .board-page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--board-bg, #0079bf);
 }
 .lists {
   flex: 1;
@@ -128,7 +209,7 @@ body {
   overflow-x: auto;
 }
 .board-gone {
-  color: #fff;
+  color: rgb(var(--board-ink));
   font-weight: 600;
 }
 .list {
@@ -178,16 +259,16 @@ body {
   flex: 0 0 272px;
   padding: 0.25rem;
   border-radius: var(--radius);
-  background: rgb(255 255 255 / 0.24);
+  background: rgb(var(--board-ink) / 0.24);
 }
 .add-list-open {
   display: block;
   width: 100%;
   text-align: left;
-  color: #fff;
+  color: rgb(var(--board-ink));
   font-weight: 600;
 }
-.add-list-open:hover { background: rgb(255 255 255 / 0.16); }
+.add-list-open:hover { background: rgb(var(--board-ink) / 0.16); }
 .add-list form { padding: 0.25rem; }
 .add-list input[type="text"] {
   display: block;
@@ -210,7 +291,7 @@ body {
   overflow-y: auto;
 }
 .list:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid rgb(var(--board-ink));
   outline-offset: 2px;
 }
 .card {

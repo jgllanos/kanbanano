@@ -1,0 +1,54 @@
+{# The board's settings menu: pick a background, or delete the board.
+
+   Picking a colour swaps this panel rather than the whole header, so the menu
+   stays open and you can try a few in a row. The panel is replaced but the
+   x-data that holds `open` sits on its parent, so it survives the swap.
+
+   The <style> lives in here so that same swap carries the new colour with it,
+   with no out-of-band element to keep in step. A <style> applies to the whole
+   document wherever it sits, including inside a panel that's hidden.
+
+   --board-ink is the text colour for things sitting directly on the background,
+   as RGB channels so the CSS can add alpha: rgb(var(--board-ink) / 0.2). The
+   shade is the darkening under the header, lighter when the ink is dark. #}
+{% set dark_ink = board.background | needs_dark_ink %}
+{% set is_preset = board.background in BOARD_COLORS.values() %}
+<div id="board-menu-panel" class="board-menu-panel" x-show="open" x-cloak>
+  <style>
+    .board-page {
+      --board-bg: {{ board.background }};
+      --board-ink: {{ "23 43 77" if dark_ink else "255 255 255" }};
+      --board-shade: {{ "0.06" if dark_ink else "0.25" }};
+    }
+  </style>
+
+  <h3 class="menu-heading">Background</h3>
+  <div class="board-swatches">
+    {% for name, hex in BOARD_COLORS.items() %}
+      <button type="button" class="board-swatch" style="--board-color: {{ hex }}"
+              title="{{ name | capitalize }}" aria-label="{{ name }}"
+              aria-pressed="{{ 'true' if hex == board.background else 'false' }}"
+              hx-patch="/boards/{{ board.id }}" hx-vals='{"background": "{{ hex }}"}'
+              hx-target="#board-menu-panel" hx-swap="outerHTML"></button>
+    {% endfor %}
+  </div>
+
+  {# Saves on `change`, which Chrome fires once when the picker closes but some
+     browsers fire continuously while dragging; the delay collapses a drag into
+     one save instead of a version bump per pixel. The id lets htmx put focus
+     back on the new input after the swap. #}
+  <label class="custom-color {{ 'is-selected' if not is_preset }}">
+    <input type="color" id="board-color" name="background" value="{{ board.background }}"
+           hx-patch="/boards/{{ board.id }}" hx-trigger="change delay:400ms"
+           hx-target="#board-menu-panel" hx-swap="outerHTML">
+    Custom color
+  </label>
+
+  {# The confirm text deliberately doesn't name the board: a rename doesn't
+     re-render this panel, so a name here could go stale. #}
+  <button type="button" class="menu-item is-danger"
+          hx-delete="/boards/{{ board.id }}"
+          hx-confirm="Delete this board? Every list and card on it goes too, and this can't be undone.">
+    Delete board
+  </button>
+</div>
