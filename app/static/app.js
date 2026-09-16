@@ -361,7 +361,11 @@ async function saveOrder(url, body, drop) {
   pendingWrites++; // htmx requests are counted by listeners; fetch has to do it itself
   try {
     const response = await fetch(url, { method: "POST", body });
-    if (response.ok) {
+    if (response.status === 401) {
+      // The session has gone. htmx requests follow the server's HX-Redirect;
+      // fetch doesn't know that header, so do the same by hand.
+      location.href = "/login";
+    } else if (response.ok) {
       adoptVersion(response.headers.get("X-Board-Version"));
     } else {
       flash(errorMessage(response.status, await response.text()));

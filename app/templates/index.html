@@ -3,6 +3,10 @@
 {% block body %}
 <header class="topbar">
   <a href="/" class="brand">Kanbanano</a>
+  {# Only here, not on boards: with a year-long session it's rarely needed. #}
+  <form class="logout" method="post" action="/logout">
+    <button type="submit">Log out</button>
+  </form>
 </header>
 
 <main class="board-index">

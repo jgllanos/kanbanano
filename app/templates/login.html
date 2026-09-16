@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Log in · Kanbanano{% endblock %}
+
+{% block body %}
+<main class="login">
+  <h1 class="brand">Kanbanano</h1>
+
+  {# A plain form post: no htmx, so logging in works even if the scripts don't. #}
+  <form class="login-form" method="post" action="/login">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required autofocus
+           autocomplete="current-password">
+    {% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
+    <button type="submit" class="primary">Log in</button>
+  </form>
+</main>
+{% endblock %}

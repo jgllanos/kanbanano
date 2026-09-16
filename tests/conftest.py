@@ -4,16 +4,25 @@ Every test gets an empty database of its own, and the app is pointed at it by
 patching `db.DB_PATH` rather than by overriding the `get_db` dependency. That
 way requests go through the real connection-per-request path, including the
 middleware that reads `conn.board_version` off it.
+
+`client` is logged in; `anon` isn't, for testing what's kept out.
 """
 
+import os
 import sqlite3
 from dataclasses import dataclass, field
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db
-from app.main import app
+# The app reads these at import, and refuses to start without them.
+PASSWORD = "correct horse"
+os.environ["BOARD_PASSWORD"] = PASSWORD
+os.environ["SECRET_KEY"] = "test-secret-key"
+os.environ.pop("ALLOW_HTTP", None)  # test the Secure cookie production uses
+
+from app import db  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture
@@ -26,11 +35,24 @@ def conn(tmp_path, monkeypatch):
     connection.close()
 
 
-@pytest.fixture
-def client(conn):
+def make_client() -> TestClient:
     # Not used as a context manager: that would run the app's lifespan, which
-    # opens the real database to create the schema.
-    return TestClient(app)
+    # opens the real database to create the schema. HTTPS because the session
+    # cookie is Secure, and the client, like a browser, won't send it over HTTP.
+    return TestClient(app, base_url="https://testserver")
+
+
+@pytest.fixture
+def anon(conn) -> TestClient:
+    return make_client()
+
+
+@pytest.fixture
+def client(conn) -> TestClient:
+    logged_in = make_client()
+    response = logged_in.post("/login", data={"password": PASSWORD})
+    assert response.status_code == 200, "logging in failed"  # 200: after following the redirect
+    return logged_in
 
 
 # ---- Sample data ----------------------------------------------------------

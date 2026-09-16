@@ -149,6 +149,38 @@ body {
 .filter-mine[aria-pressed="true"] { background: #fff; color: var(--text); }
 .filter-mine:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ---- Login ---- */
+
+.logout { margin-left: auto; }
+.logout button { color: rgb(255 255 255 / 0.8); }
+.logout button:hover { background: rgb(255 255 255 / 0.15); color: #fff; }
+
+.login {
+  max-width: 20rem;
+  margin: 15vh auto 0;
+  padding: 0 1rem;
+}
+.login .brand { margin: 0 0 1.5rem; font-size: 1.5rem; text-align: center; }
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.25rem;
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(9 30 66 / 0.25);
+}
+.login-form label { font-size: 0.875rem; font-weight: 600; }
+.login-form input {
+  padding: 0.5rem;
+  border: 1px solid rgb(9 30 66 / 0.25);
+  border-radius: 4px;
+  font: inherit;
+}
+.login-form input:focus { outline: 2px solid #0c66e4; outline-offset: -1px; }
+.login-error { margin: 0; color: #ae2e24; font-size: 0.875rem; }
+.login-form button { margin-top: 0.5rem; }
+
 /* ---- Board index ---- */
 
 .board-index {

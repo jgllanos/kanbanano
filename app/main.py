@@ -1,5 +1,7 @@
 import json
+import os
 import re
+import secrets
 import sqlite3
 from collections.abc import Iterable
 from contextlib import asynccontextmanager
@@ -7,13 +9,62 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from app import db
 
 BASE_DIR = Path(__file__).parent
+
+
+def required_env(name: str) -> str:
+    """An environment variable the app can't run without. Fails at startup, loudly,
+    rather than on the first login attempt."""
+    value = os.environ.get(name, "")
+    if not value:
+        raise RuntimeError(f"The {name} environment variable must be set")
+    return value
+
+
+# One shared password for everyone; see "Auth and identity" in plan.md.
+BOARD_PASSWORD = required_env("BOARD_PASSWORD")
+# Signs the session cookie. Changing it logs every device out.
+SECRET_KEY = required_env("SECRET_KEY")
+# The session cookie is Secure by default, since Tailscale Serve terminates TLS
+# in front. Browsers won't send a Secure cookie over plain HTTP (localhost aside),
+# so reaching the app by LAN IP without TLS would loop back to the login page
+# forever. ALLOW_HTTP=1 drops the flag for that setup.
+ALLOW_HTTP = os.environ.get("ALLOW_HTTP") == "1"
+
+SESSION_MAX_AGE = 365 * 24 * 60 * 60  # typed once per device
+
+# Paths reachable without logging in. Static files aren't listed because they're
+# a mount, which app-wide dependencies never reach, so they're always open: the
+# login page needs its stylesheet.
+LOGIN_EXEMPT = {"/login", "/logout"}
+
+
+def require_login(request: Request) -> None:
+    """App-wide dependency: turn away anyone without a logged-in session.
+
+    Applied to the whole app rather than route by route, so a new route is
+    protected unless it's deliberately added to LOGIN_EXEMPT.
+    """
+    if request.url.path in LOGIN_EXEMPT or request.session.get("logged_in"):
+        return
+    if "HX-Request" in request.headers:
+        # An ordinary redirect would be followed inside the XHR, and the login
+        # page swapped into whatever the request was targeting. HX-Redirect makes
+        # htmx send the whole page there instead. This is also how an open board
+        # notices, on its next poll, that the session has gone.
+        raise HTTPException(
+            status_code=401, detail="Please log in again", headers={"HX-Redirect": "/login"}
+        )
+    if request.method == "GET":
+        raise HTTPException(status_code=303, headers={"Location": "/login"})
+    raise HTTPException(status_code=401, detail="Please log in again")
 
 
 @asynccontextmanager
@@ -26,7 +77,15 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(lifespan=lifespan)
+# No /docs or /openapi.json: those are added outside the dependency system, so
+# require_login wouldn't cover them, and nothing here needs them.
+app = FastAPI(
+    lifespan=lifespan,
+    dependencies=[Depends(require_login)],
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
@@ -58,6 +117,19 @@ async def report_board_version(request: Request, call_next):
     if conn is not None and conn.board_version is not None:
         response.headers["X-Board-Version"] = str(conn.board_version)
     return response
+
+
+# Added after the middleware above, so it wraps them and the session is decoded
+# before anything else looks at the request. The cookie is signed, not encrypted:
+# it holds nothing but the logged-in flag. Starlette re-issues it on every
+# response, so the year runs from a device's last visit, not its login.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    max_age=SESSION_MAX_AGE,
+    same_site="lax",
+    https_only=not ALLOW_HTTP,
+)
 
 
 def initials(name: str) -> str:
@@ -282,6 +354,35 @@ def get_label(conn: sqlite3.Connection, label_id: int, board_id: int) -> sqlite3
     if label is None:
         raise HTTPException(status_code=404, detail="This label was deleted")
     return label
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if request.session.get("logged_in"):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "login.html")
+
+
+@app.post("/login", response_class=HTMLResponse)
+def login(request: Request, password: Annotated[str, Form()] = ""):
+    """Check the shared password and start a session.
+
+    A plain form post rather than htmx: it's the one page that has to work
+    before anything else does. compare_digest so the time taken doesn't hint
+    at how much of a guess was right.
+    """
+    if not secrets.compare_digest(password.encode(), BOARD_PASSWORD.encode()):
+        return templates.TemplateResponse(
+            request, "login.html", {"error": "That's not the password."}, status_code=401
+        )
+    request.session["logged_in"] = True
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
 
 
 @app.get("/", response_class=HTMLResponse)
