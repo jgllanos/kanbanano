@@ -32,6 +32,11 @@
     {% with kind="person", options=options.person %}{% include "_label_section.html" %}{% endwith %}
 
     <div class="modal-footer">
+      {# Sets the focus timer's card on this device. It doesn't start the timer. #}
+      <div x-data="focusButton({{ card.id }})">
+        <button type="button" class="focus-this" x-show="!isFocus" @click="focus()">🍅 Focus on this</button>
+        <span class="focus-current" x-show="isFocus" x-cloak>🍅 You're focusing on this</span>
+      </div>
       <button type="button" class="danger" x-ref="deleteButton"
               hx-delete="/cards/{{ card.id }}" hx-target="#card-{{ card.id }}" hx-swap="delete"
               hx-confirm="Delete this card? This can't be undone.">

@@ -232,6 +232,18 @@ function modalOpen() {
   return document.querySelector("#modal-root dialog[open]") !== null;
 }
 
+// ---- Card links -----------------------------------------------------------
+// /boards/1#card-5 opens card 5 once the board has loaded. The focus timer links
+// to its card this way from other pages. htmx sets up the card's click handler
+// on DOMContentLoaded too, and its listener was added first, so it's ready here.
+
+document.addEventListener("DOMContentLoaded", () => {
+  const match = location.hash.match(/^#card-(\d+)$/);
+  if (!match) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  document.getElementById(`card-${match[1]}`)?.click();
+});
+
 // ---- Keyboard shortcuts ---------------------------------------------------
 
 // `n` targets whichever list the pointer or keyboard focus was in most recently.

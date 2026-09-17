@@ -1,8 +1,8 @@
 # Kanbanano
 
 A small self-hosted kanban board for a household or a few people: boards, lists and
-cards with drag and drop, labels, people, checklists, and changes from other people
-showing up within a few seconds. Auth relies on one shared password instead of user
+cards with drag and drop, labels, people, checklists, a pomodoro timer, and changes
+from other people showing up within a few seconds. Auth relies on one shared password instead of user
 accounts.
 
 It's a FastAPI app with server-rendered HTML (htmx, Alpine.js, SortableJS) and a

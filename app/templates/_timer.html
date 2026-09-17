@@ -1,0 +1,206 @@
+{# The focus timer dock, which is displayed on every page but login. Its state
+    is per device, in localStorage (see timer.js). It's outside everything a board
+    refresh
+   replaces, so refreshes never touch it. #}
+<div id="timer-dock" class="timer-dock" x-data="timerDock" x-cloak>
+  <div class="timer-picking-banner" role="status" x-show="timer.picking">
+    Click a card to focus on it
+    <button type="button" @click="timer.picking = false">Cancel</button>
+  </div>
+
+  {# Minimized with nothing going on: just a tomato. #}
+  <button type="button" class="timer-launcher" x-show="timer.minimized && timer.quiet"
+          @click="timer.expand()" aria-label="Open the focus timer" title="Focus timer">🍅</button>
+
+  {# Minimized otherwise: the time and the focus card. #}
+  <div class="timer-pill" x-show="timer.minimized && !timer.quiet">
+    <button type="button" class="timer-pill-open" @click="timer.expand()" aria-label="Open the focus timer">
+      <span class="timer-pill-emoji" aria-hidden="true">🍅</span>
+      <span class="timer-time" :class="{ 'is-paused': timer.paused }" x-text="timer.timeText"></span>
+      <span class="timer-pill-label" x-text="timer.pillLabel"></span>
+    </button>
+    <button type="button" class="timer-pill-toggle" @click="timer.toggle()"
+            :aria-label="timer.toggleLabel" :title="timer.toggleLabel">
+      <svg x-show="timer.running" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/>
+      </svg>
+      <svg x-show="!timer.running" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z"/>
+      </svg>
+    </button>
+  </div>
+
+  <section class="timer-panel" x-show="!timer.minimized" aria-label="Focus timer">
+    <div class="timer-panel-top">
+      <h2 x-text="settingsOpen ? 'Timer settings' : 'Focus timer'"></h2>
+      <button type="button" class="timer-icon-button" x-show="!settingsOpen" @click="openSettings()"
+              aria-label="Timer settings" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" class="is-stroked">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+        </svg>
+      </button>
+      <button type="button" class="timer-icon-button" @click="minimize()"
+              aria-label="Minimize the timer" title="Minimize">
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" class="is-stroked">
+          <path d="M4 6l4 4 4-4"/>
+        </svg>
+      </button>
+    </div>
+
+    {# ---- Timer ---- #}
+    <div x-show="!settingsOpen && !timer.done">
+      {# Switching phase would throw away the current one, so it's only possible
+         while idle. Reset first. #}
+      <div class="timer-phases" role="group" aria-label="Phase">
+        <template x-for="phase in timer.phases" :key="phase.id">
+          <button type="button" x-text="phase.name" @click="timer.setPhase(phase.id)"
+                  :aria-pressed="(timer.phase === phase.id).toString()"
+                  :disabled="!timer.idle && timer.phase !== phase.id"
+                  :title="!timer.idle && timer.phase !== phase.id ? 'Reset the timer to switch' : ''"></button>
+        </template>
+      </div>
+
+      <div class="timer-clock">
+        <img class="timer-tomato" :class="{ 'is-running': timer.running }" :src="timer.tomatoSrc"
+             alt="" width="120" height="120">
+        <div>
+          <p class="timer-time timer-time-big" :class="{ 'is-paused': timer.paused }" x-text="timer.timeText"></p>
+          <p class="timer-cycle">
+            <template x-for="(filled, i) in timer.dots" :key="i">
+              <span class="timer-dot" :class="{ 'is-filled': filled }"></span>
+            </template>
+            <span x-text="timer.cycleLabel"></span>
+          </p>
+        </div>
+      </div>
+
+      <div class="timer-focus">
+        <h3 class="menu-heading" x-text="timer.focusHeading"></h3>
+        <button type="button" class="timer-focus-card" x-show="timer.focus" @click="timer.openFocusCard()"
+                title="Open this card">
+          <span class="timer-focus-title" x-text="timer.focus?.title"></span>
+          <span class="timer-focus-where"
+                x-text="timer.focus ? timer.focus.listTitle + ' · ' + timer.focus.boardTitle : ''"></span>
+        </button>
+        <p class="timer-no-focus" x-show="!timer.focus">
+          No card picked. Open a card and choose "Focus on this", or use the timer without one.
+        </p>
+
+        <div class="timer-focus-actions" @click.outside="changeOpen = false"
+             @keydown.escape.stop="changeOpen = false">
+          <button type="button" x-show="onBoard || timer.recents.length" @click="changeOpen = !changeOpen"
+                  :aria-expanded="changeOpen.toString()">
+            <span x-text="timer.focus ? 'Change' : 'Pick a card'"></span> ▾
+          </button>
+          <button type="button" x-show="timer.focus" @click="timer.clearFocus()">Clear</button>
+
+          <div class="menu-panel timer-change-menu" x-show="changeOpen">
+            <template x-if="timer.recents.length">
+              <div>
+                <h3 class="menu-heading">Recent</h3>
+                <template x-for="card in timer.recents" :key="card.cardId">
+                  <button type="button" class="menu-item" @click="timer.setFocus(card); changeOpen = false">
+                    <span class="timer-recent-title" x-text="card.title"></span>
+                    <span class="timer-recent-where" x-text="card.listTitle"></span>
+                  </button>
+                </template>
+                <hr class="menu-divider" x-show="onBoard">
+              </div>
+            </template>
+            <button type="button" class="menu-item" x-show="onBoard" @click="startPicking()">
+              Pick a card on the board…
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="timer-controls">
+        <button type="button" class="primary timer-start" @click="timer.toggle()">
+          <svg x-show="timer.running" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/>
+          </svg>
+          <svg x-show="!timer.running" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z"/>
+          </svg>
+          <span x-text="timer.toggleLabel"></span>
+        </button>
+        <button type="button" @click="timer.reset()" :disabled="timer.idle"
+                title="Back to the full duration">Reset</button>
+        <button type="button" @click="timer.skip()"
+                title="End this phase now, without the sound or confetti">Skip</button>
+      </div>
+    </div>
+
+    {# ---- Phase done ---- #}
+    <div class="timer-done" x-show="!settingsOpen && timer.done">
+      <img class="timer-tomato" :src="timer.doneImage" alt="" width="132" height="132">
+      <p class="timer-done-heading" x-text="timer.doneHeading"></p>
+      <p class="timer-done-detail" x-text="timer.doneDetail"></p>
+      <div class="timer-controls">
+        <button type="button" class="primary timer-start" @click="timer.startNext()" x-text="timer.toggleLabel"></button>
+        <button type="button" @click="timer.notNow()">Not now</button>
+      </div>
+    </div>
+
+    {# ---- Settings ---- #}
+    <div class="timer-settings" x-show="settingsOpen">
+      <fieldset>
+        <legend class="menu-heading">Durations (minutes)</legend>
+        <label class="timer-setting-row">
+          Focus
+          <input type="number" min="1" max="120" :value="timer.settings.focus"
+                 @change="$el.value = timer.setDuration('focus', $el.value)">
+        </label>
+        <label class="timer-setting-row">
+          Short break
+          <input type="number" min="1" max="60" :value="timer.settings.short"
+                 @change="$el.value = timer.setDuration('short', $el.value)">
+        </label>
+        <label class="timer-setting-row">
+          Long break
+          <input type="number" min="1" max="60" :value="timer.settings.long"
+                 @change="$el.value = timer.setDuration('long', $el.value)">
+        </label>
+        <label class="timer-setting-row">
+          Long break after
+          <span>
+            <input type="number" min="2" max="8" :value="timer.settings.every"
+                   @change="$el.value = timer.setDuration('every', $el.value)">
+            focus sessions
+          </span>
+        </label>
+        <p class="hint" x-show="timer.running || timer.paused">
+          The current session keeps its length. Changes apply from the next one.
+        </p>
+      </fieldset>
+
+      <fieldset>
+        <legend class="menu-heading">When a phase ends</legend>
+        <div class="timer-setting-row">
+          <label>
+            <input type="checkbox" :checked="timer.settings.sound"
+                   @change="timer.setSetting('sound', $el.checked)">
+            Play a sound
+          </label>
+          <button type="button" @click="timer.testSound()">Test</button>
+        </div>
+        <label class="timer-setting-row">
+          Volume
+          <input type="range" min="0" max="100" :value="Math.round(timer.settings.volume * 100)"
+                 @input="timer.setSetting('volume', $el.value / 100)">
+        </label>
+        <div class="timer-setting-row">
+          <label>
+            <input type="checkbox" :checked="timer.settings.confetti"
+                   @change="timer.setSetting('confetti', $el.checked)">
+            Confetti after a focus session
+          </label>
+          <button type="button" @click="timer.testConfetti()">Test</button>
+        </div>
+      </fieldset>
+
+      <button type="button" class="primary" @click="settingsOpen = false">Done</button>
+    </div>
+  </section>
+</div>

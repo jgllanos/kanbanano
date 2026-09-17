@@ -252,7 +252,7 @@ body {
 }
 .list {
   flex: 0 0 272px;
-  max-height: calc(100vh - 5rem);
+  max-height: calc(100vh - 8.5rem); /* leaves room below for the timer dock */
   display: flex;
   flex-direction: column;
   padding: 0.5rem;
@@ -340,6 +340,21 @@ body {
   border-radius: 6px;
   box-shadow: 0 1px 1px rgb(9 30 66 / 0.25);
   overflow-wrap: anywhere;
+}
+/* The focus timer's tag. timer.js sets --focus-tag on the focus card. On other
+   cards it's unset, so they get no tag. */
+.card::before {
+  content: var(--focus-tag, none);
+  display: block;
+  width: fit-content;
+  margin-bottom: 0.375rem;
+  padding: 0 0.375rem;
+  border-radius: 4px;
+  background: #ffeceb;
+  color: #ae2e24;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25rem;
 }
 /* Inset because .cards is a scroll container, which clips anything drawn outside it. */
 .card:focus-visible {
@@ -707,8 +722,266 @@ button.danger:hover { background: #ffeceb; }
 
 .modal-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 1.5rem;
+}
+.focus-this { background: rgb(9 30 66 / 0.06); }
+.focus-this:hover { background: rgb(9 30 66 / 0.13); }
+.focus-current { color: #ae2e24; font-weight: 600; }
+
+/* Confetti drawn over an open card modal (see throwConfetti in timer.js). */
+.confetti-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ---- Focus timer ---- */
+
+.timer-dock {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--text);
+}
+.timer-dock svg { width: 1rem; height: 1rem; fill: currentColor; }
+.timer-dock svg.is-stroked {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.timer-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.timer-time.is-paused { color: var(--muted); }
+
+/* Minimized */
+.timer-launcher {
+  width: 3.5rem;
+  height: 3.5rem;
+  padding: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 4px 16px rgb(9 30 66 / 0.3);
+  font-size: 1.75rem;
+  line-height: 1;
+}
+.timer-launcher:hover { background: #fff; transform: scale(1.06); }
+.timer-pill {
+  display: flex;
+  align-items: center;
+  max-width: min(24rem, calc(100vw - 2rem));
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgb(9 30 66 / 0.3);
+}
+.timer-pill-open {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  height: 3rem;
+  padding: 0 0.5rem 0 0.875rem;
+  border-radius: 999px 0 0 999px;
+}
+.timer-pill-emoji { font-size: 1.25rem; }
+.timer-pill-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.timer-pill-toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-right: 0.25rem;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* Expanded */
+.timer-panel {
+  width: min(21.25rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: 0.5rem 0.875rem 0.875rem;
+  border-radius: 12px;
+  background: #f7f8f9;
+  box-shadow: 0 8px 32px rgb(9 30 66 / 0.35);
+}
+.timer-panel-top { display: flex; align-items: center; gap: 0.25rem; }
+.timer-panel-top h2 { flex: 1; margin: 0; font-size: 0.8125rem; color: var(--muted); }
+.timer-icon-button { display: grid; place-items: center; width: 2rem; height: 2rem; padding: 0; }
+.timer-icon-button svg { width: 1.125rem; height: 1.125rem; }
+.timer-panel button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.timer-phases {
+  display: flex;
+  gap: 2px;
+  margin-top: 0.5rem;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgb(9 30 66 / 0.08);
+}
+.timer-phases button {
+  flex: 1;
+  padding: 0.375rem 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.timer-phases button[aria-pressed="true"] {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(9 30 66 / 0.25);
+}
+
+.timer-clock { display: flex; align-items: center; gap: 0.75rem; margin: 0.75rem 0; }
+.timer-tomato { flex: none; width: 7.5rem; height: 7.5rem; }
+.timer-tomato.is-running { animation: timer-bob 2s ease-in-out infinite; }
+@keyframes timer-bob { 50% { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) {
+  .timer-tomato.is-running { animation: none; }
+}
+.timer-time-big { margin: 0; font-size: 3.25rem; line-height: 1; letter-spacing: -0.02em; }
+.timer-cycle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0.375rem 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.timer-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: rgb(9 30 66 / 0.18); }
+.timer-dot.is-filled { background: #c9372c; }
+
+.timer-focus { position: relative; }
+.timer-focus-card {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgb(9 30 66 / 0.25);
+  text-align: left;
+}
+.timer-focus-card:hover { background: #fff; box-shadow: 0 0 0 2px #0c66e4; }
+.timer-focus-title { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.timer-focus-where { display: block; margin-top: 0.125rem; color: var(--muted); font-size: 0.75rem; }
+.timer-no-focus {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed rgb(9 30 66 / 0.3);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.timer-focus-actions { display: flex; gap: 0.375rem; margin-top: 0.375rem; }
+/* Opens upwards, since the dock sits at the bottom of the window. */
+.timer-change-menu {
+  top: auto;
+  bottom: calc(100% + 0.375rem);
+  left: 0;
+  right: auto;
+  width: 100%;
+}
+.timer-change-menu .menu-item { display: flex; gap: 0.5rem; }
+.timer-recent-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.timer-recent-where { margin-left: auto; color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
+
+.timer-controls { display: flex; gap: 0.375rem; margin-top: 0.875rem; }
+.timer-start {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+}
+.timer-focus-actions > button,
+.timer-controls > button:not(.primary),
+.timer-settings .timer-setting-row > button {
+  background: rgb(9 30 66 / 0.06);
+}
+.timer-focus-actions > button:hover,
+.timer-controls > button:not(.primary):hover,
+.timer-settings .timer-setting-row > button:hover {
+  background: rgb(9 30 66 / 0.13);
+}
+
+.timer-done { text-align: center; }
+.timer-done .timer-tomato { display: block; width: 8.25rem; height: 8.25rem; margin: 0.25rem auto 0; }
+.timer-done-heading { margin: 0.5rem 0 0.25rem; font-size: 1.25rem; font-weight: 700; }
+.timer-done-detail { margin: 0; color: var(--muted); font-size: 0.875rem; overflow-wrap: anywhere; }
+
+.timer-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+}
+.timer-settings fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.timer-settings legend { padding: 0; }
+.timer-settings .hint { margin: 0; }
+.timer-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.timer-setting-row label { display: flex; align-items: center; gap: 0.5rem; }
+.timer-setting-row input[type="number"] {
+  width: 4rem;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid rgb(9 30 66 / 0.25);
+  border-radius: 4px;
+  font: inherit;
+}
+.timer-setting-row input[type="range"] { flex: 0 1 12rem; accent-color: #0c66e4; }
+.timer-setting-row input[type="checkbox"] { margin: 0; accent-color: #0c66e4; }
+
+/* Picking the focus card on the board */
+.timer-picking-banner {
+  position: fixed;
+  top: 4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border-radius: 8px;
+  background: #172b4d;
+  color: #fff;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+}
+.timer-picking-banner button { background: rgb(255 255 255 / 0.15); }
+.timer-picking-banner button:hover { background: rgb(255 255 255 / 0.25); }
+/* Inset, like .card:focus-visible, so the list's scroll container doesn't clip it. */
+.timer-picking .card {
+  cursor: crosshair;
+  box-shadow: inset 0 0 0 2px #0c66e4, 0 1px 1px rgb(9 30 66 / 0.25);
 }
 
 /* ---- Error messages ---- */
