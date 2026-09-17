@@ -14,7 +14,9 @@ def test_pages_render(client, board):
 
     view = client.get(f"/boards/{board.id}")
     assert view.status_code == 200
-    for expected in ["Home", "To do", "Tap", "Add a list", "Delete board"]:
+    # The lists panel fills itself in from the board, so only its frame is here.
+    for expected in ["Home", "To do", "Tap", "Add a list", "Delete board",
+                     'id="list-rail"', "Hide this list"]:
         assert expected in view.text
 
 

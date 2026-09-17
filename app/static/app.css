@@ -270,8 +270,15 @@ body {
   flex-direction: column;
   background: var(--board-bg, #0079bf);
 }
+/* The lists panel and the board side by side. Only the board scrolls sideways. */
+.board-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
 .lists {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
@@ -391,6 +398,66 @@ body {
 /* Inset because .cards is a scroll container, which clips anything drawn outside it. */
 .card:focus-visible {
   outline: 2px solid #0c66e4;
+  outline-offset: -2px;
+}
+
+/* ---- Lists panel ---- */
+
+/* Shaded like the top bar, so the two read as one piece of chrome on any board
+   background. */
+.list-rail {
+  flex: 0 0 11rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  overflow-y: auto;
+  background: rgb(0 0 0 / var(--board-shade));
+  color: rgb(var(--board-ink));
+  font-size: 0.875rem;
+}
+.list-rail.is-strip { flex-basis: auto; }
+.rail-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: rgb(var(--board-ink) / 0.8);
+  font-weight: 600;
+}
+.rail-toggle:hover {
+  background: rgb(var(--board-ink) / 0.2);
+  color: rgb(var(--board-ink));
+}
+.is-strip .rail-label { display: none; }
+/* How many lists are hidden, which the panel can't show as a strip. */
+.rail-count {
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  background: rgb(var(--board-ink) / 0.25);
+  font-size: 0.75rem;
+}
+.rail-lists {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+.rail-list {
+  display: block;
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  color: rgb(var(--board-ink));
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-list:hover { background: rgb(var(--board-ink) / 0.16); }
+/* A hidden list stays in the panel: it's the way back. */
+.rail-list.is-hidden {
+  color: rgb(var(--board-ink) / 0.55);
+  text-decoration: line-through;
+}
+.list-rail :focus-visible {
+  outline: 2px solid rgb(var(--board-ink));
   outline-offset: -2px;
 }
 

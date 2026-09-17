@@ -8,8 +8,12 @@
   {% include "_board_header.html" %}
 
   {# Polls replace #lists-container and #board-header, so keep other UI state
-     outside them. #}
-  {% include "_lists.html" %}
+     outside them. The lists panel is one such thing: it sits beside the board,
+     and only the board scrolls sideways. #}
+  <div class="board-body">
+    {% include "_list_rail.html" %}
+    {% include "_lists.html" %}
+  </div>
 </div>
 
 {# Polls every 3s for changes. app.js triggers `refresh` to poll immediately once

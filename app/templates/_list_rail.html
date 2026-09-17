@@ -1,0 +1,36 @@
+{# The lists panel: a column down the left listing every list on the board,
+   where clicking one shows or hides it. Which lists are hidden, and whether the
+   panel is a strip, are per device and per board, in localStorage (see the rail
+   store in app.js). Hiding is a generated CSS rule, so a board refresh doesn't
+   undo it.
+
+   The items are read from the board rather than rendered here, so adds,
+   renames, deletes and drags all show up without the server (see boardRail).
+   The panel sits outside #lists-container, so a refresh never replaces it. #}
+<nav id="list-rail" class="list-rail" x-data="boardRail({{ board.id }})"
+     :class="{ 'is-strip': $store.rail.collapsed }" aria-label="Lists">
+  <button type="button" class="rail-toggle" title="Lists"
+          @click="$store.rail.collapsed = !$store.rail.collapsed"
+          :aria-expanded="(!$store.rail.collapsed).toString()"
+          :aria-label="$store.rail.collapsed && $store.rail.count
+                       ? 'Lists, ' + $store.rail.count + ' hidden' : 'Lists'">
+    <span aria-hidden="true" x-text="$store.rail.collapsed ? '»' : '«'"></span>
+    <span class="rail-label" aria-hidden="true">Lists</span>
+    {# Only as a strip: expanded, the panel already shows which are hidden. #}
+    <span class="rail-count" aria-hidden="true" x-cloak
+          x-show="$store.rail.collapsed && $store.rail.count"
+          x-text="$store.rail.count"></span>
+  </button>
+
+  {# A hidden list stays in the panel, struck through: it's the way back. #}
+  <ul class="rail-lists" x-show="!$store.rail.collapsed" x-cloak>
+    <template x-for="list in lists" :key="list.id">
+      <li>
+        <button type="button" class="rail-list" :data-list-id="list.id"
+                :class="{ 'is-hidden': $store.rail.isHidden(list.id) }"
+                :aria-pressed="(!$store.rail.isHidden(list.id)).toString()"
+                @click="$store.rail.toggle(list.id)" x-text="list.title"></button>
+      </li>
+    </template>
+  </ul>
+</nav>

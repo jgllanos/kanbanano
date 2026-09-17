@@ -259,6 +259,94 @@ document.addEventListener("alpine:init", () => {
       this.$store.filter.load(boardId, options);
     },
   }));
+
+  // ---- Lists panel --------------------------------------------------------
+  // A panel down the left listing every list on the board; clicking one shows
+  // or hides it. Per device and per board in localStorage, like the filter, and
+  // applied the same way, as a generated CSS rule.
+  //
+  // The store holds the state. The panel (_list_rail.html) reads its items from
+  // the board, so adds, renames, deletes and drags need no server support.
+
+  Alpine.store("rail", {
+    boardId: null,
+    hidden: [], // ids of lists kept off the board
+    collapsed: false, // the panel itself is a thin strip
+
+    init() {
+      Alpine.effect(() => {
+        if (this.boardId === null) return; // not on a board
+        const { hidden, collapsed } = this;
+        storage.set(`rail:${this.boardId}`, JSON.stringify({ hidden, collapsed }));
+        setHiddenLists(hidden);
+      });
+    },
+
+    load(boardId) {
+      let saved = {};
+      try {
+        saved = JSON.parse(storage.get(`rail:${boardId}`)) ?? {};
+      } catch {}
+      const hidden = Array.isArray(saved.hidden) ? saved.hidden.filter(Number.isInteger) : [];
+      Object.assign(this, { boardId, hidden, collapsed: saved.collapsed === true });
+    },
+
+    get count() {
+      return this.hidden.length;
+    },
+
+    isHidden(id) {
+      return this.hidden.includes(id);
+    },
+
+    toggle(id) {
+      this.hidden = this.isHidden(id) ? this.hidden.filter((other) => other !== id) : [...this.hidden, id];
+    },
+
+    // From the list's own menu (_list_header.html): the list goes out from under
+    // the focus, so put the focus on it in the panel instead.
+    hide(id) {
+      if (!this.isHidden(id)) this.hidden = [...this.hidden, id];
+      Alpine.nextTick(() => focusRailItem(id));
+    },
+
+    // Called with the board's list ids, to forget any deleted since.
+    prune(ids) {
+      const known = new Set(ids);
+      if (this.hidden.some((id) => !known.has(id))) {
+        this.hidden = this.hidden.filter((id) => known.has(id));
+      }
+    },
+  });
+
+  Alpine.data("boardRail", (boardId) => ({
+    lists: [], // {id, title} for every list on the board, hidden or not
+
+    init() {
+      this.$store.rail.load(boardId);
+      this.read();
+      // Lists are added, renamed, deleted and dragged without this panel being
+      // told, and a poll replaces #lists-container itself. Watching the panel's
+      // parent for any change covers all of it, including that replacement.
+      new MutationObserver(() => this.read()).observe(this.$root.parentElement, {
+        childList: true,
+        subtree: true,
+      });
+    },
+
+    // Rebuilds the items from the board. Rendering the panel is itself a change
+    // the observer sees, so this returns early unless something really changed
+    // and the observer settles after one extra pass.
+    read() {
+      const lists = [...document.querySelectorAll("#lists-container .list")].map((list) => ({
+        id: Number(list.dataset.listId),
+        title: list.querySelector(".list-title").textContent.trim(),
+      }));
+      if (JSON.stringify(lists) === JSON.stringify(this.lists)) return;
+      this.lists = lists;
+      this.$store.rail.prune(lists.map((list) => list.id));
+    },
+  }));
 });
 
 // localStorage can be unavailable (private windows, blocked storage); then
@@ -295,6 +383,24 @@ function setBoardFilter(ids, match) {
   boardFilterStyle.textContent = rules.length ? `${rules.join(",\n")} { display: none; }` : "";
 }
 
+// Lists hidden from the panel, also a generated CSS rule, so it survives a board
+// refresh re-rendering the lists. Hidden lists stay in the page, so a drag still
+// posts the order of every list, not just the visible ones.
+const hiddenListStyle = document.createElement("style");
+document.head.append(hiddenListStyle);
+
+function setHiddenLists(ids) {
+  const rules = ids.filter(Number.isInteger).map((id) => `.list[data-list-id="${id}"]`);
+  hiddenListStyle.textContent = rules.length ? `${rules.join(",\n")} { display: none; }` : "";
+}
+
+// Focuses a list in the panel, or the panel's own button when it's a strip.
+function focusRailItem(listId) {
+  const rail = document.getElementById("list-rail");
+  const item = rail?.querySelector(`.rail-list[data-list-id="${listId}"]`);
+  (item?.checkVisibility() ? item : rail?.querySelector(".rail-toggle"))?.focus();
+}
+
 function modalOpen() {
   return document.querySelector("#modal-root dialog[open]") !== null;
 }
@@ -323,8 +429,16 @@ function trackCurrentList(event) {
 document.addEventListener("mouseover", trackCurrentList);
 document.addEventListener("focusin", trackCurrentList);
 
+// Lists hidden from the lists panel are skipped: the keyboard only reaches
+// what's on the board.
+function visibleLists() {
+  return [...document.querySelectorAll(".list")].filter((list) => list.checkVisibility());
+}
+
 function currentList() {
-  return document.getElementById(`list-${currentListId}`) ?? document.querySelector(".list");
+  const lists = visibleLists();
+  const current = document.getElementById(`list-${currentListId}`);
+  return lists.includes(current) ? current : lists[0];
 }
 
 function isTyping(el) {
@@ -396,7 +510,7 @@ document.addEventListener("keydown", (event) => {
   const index = cards.indexOf(event.target.closest(".card")); // -1: the list itself, or a button in it
 
   if (dx) {
-    const lists = [...document.querySelectorAll(".list")];
+    const lists = visibleLists();
     const adjacent = lists[lists.indexOf(list) + dx];
     if (adjacent) focusCardAt(adjacent, index);
   } else if (index === -1) {

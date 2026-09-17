@@ -29,6 +29,12 @@
               @click="open = false; renaming = true; $nextTick(() => $refs.listTitle.select())">
         Rename list
       </button>
+      {# Takes it off the board for this device only. The lists panel brings it
+         back, and gets the focus, since this menu goes with the list. #}
+      <button type="button" class="menu-item"
+              @click="open = false; $store.rail.hide({{ list.id }})">
+        Hide this list
+      </button>
       <button type="button" class="menu-item is-danger"
               hx-delete="/lists/{{ list.id }}" hx-target="closest .list" hx-swap="delete"
               hx-confirm="Delete this list and all its cards? This can't be undone.">
