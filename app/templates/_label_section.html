@@ -74,6 +74,6 @@
 
 {# Out-of-band updates, only present in responses to changes. #}
 {% for face in faces %}{% with card=face %}{% include "_card_face_oob.html" %}{% endwith %}{% endfor %}
-{% if refresh_identity %}
-  {% with people=options, board_id=card.board_id, oob=True %}{% include "_identity.html" %}{% endwith %}
+{% if refresh_filter %}
+  {% with options=board_options, board_id=card.board_id, oob=True %}{% include "_filter.html" %}{% endwith %}
 {% endif %}

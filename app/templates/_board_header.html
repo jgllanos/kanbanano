@@ -13,9 +13,9 @@
            @keydown.escape.prevent="$el.value = $el.defaultValue; $el.blur()">
   </form>
 
-  {# oob=False: the picker is swapped as part of the header, so it shouldn't
+  {# oob=False: the filter is swapped as part of the header, so it shouldn't
      also be swapped on its own. #}
-  {% with board_id=board.id, oob=False %}{% include "_identity.html" %}{% endwith %}
+  {% with board_id=board.id, oob=False %}{% include "_filter.html" %}{% endwith %}
 
   <div class="menu" x-data="menu" :class="{ 'is-open': open }"
        @click.outside="open = false" @keydown.escape.prevent="close()">

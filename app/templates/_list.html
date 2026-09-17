@@ -14,6 +14,22 @@
     <textarea name="title" x-ref="title" rows="2" required
               placeholder="Card title" aria-label="New card title"
               @keydown="onKeydown"></textarea>
+    {# The labels and people the board filter is showing. The new card gets them,
+       so it matches the filter; × leaves one off (see boardList in app.js). #}
+    <template x-for="option in defaults" :key="option.id">
+      <input type="hidden" name="label_ids" :value="option.id">
+    </template>
+    <div class="composer-defaults" x-show="defaults.length" x-cloak>
+      Adds
+      <template x-for="option in defaults" :key="option.id">
+        <button type="button" class="composer-default" :class="'is-' + option.kind"
+                :style="'--label-color: ' + option.color" @click="leaveOff(option.id)"
+                :title="'Don\'t add ' + option.name" :aria-label="'Don\'t add ' + option.name">
+          <span x-text="option.kind === 'person' ? option.initials : option.name"></span>
+          <span aria-hidden="true">×</span>
+        </button>
+      </template>
+    </div>
     <div class="composer-actions">
       <button type="submit" class="primary">Add card</button>
       <button type="button" @click="close()">Cancel</button>

@@ -1,0 +1,69 @@
+{# The header's board filter. Its state is per device, in localStorage (see the
+   filter store in app.js), so re-rendering this is safe: init() hands the store
+   the board's current labels and people. #}
+<div id="board-filter" class="board-filter"
+     x-data='boardFilter({{ board_id }}, {{ options | filter_options | tojson }})'
+     {% if oob %}hx-swap-oob="true"{% endif %}>
+{# A menu, so a board refresh waits while it's open (see refreshBlocked). #}
+<div class="menu" x-data="menu" :class="{ 'is-open': open }"
+     @click.outside="open = false" @keydown.escape.prevent="close()">
+  {# Shows what's selected, so it's clear from the header that cards are hidden. #}
+  <button type="button" class="filter-open" x-ref="menuButton" @click="open = !open"
+          :class="{ 'is-active': $store.filter.count }" :aria-expanded="open.toString()">
+    Filter<span x-show="$store.filter.count" x-cloak>:</span>
+    <template x-for="(option, i) in $store.filter.shownOptions" :key="option.id">
+      <span class="filter-summary-item">
+        <span class="filter-summary-or" x-show="i > 0 && $store.filter.match === 'any'">or</span>
+        <span class="filter-chip" :class="'is-' + option.kind" :style="'--label-color: ' + option.color"
+              x-text="option.kind === 'person' ? option.initials : option.name"
+              :title="option.name"></span>
+      </span>
+    </template>
+    <span class="filter-summary-more" x-show="$store.filter.hiddenCount" x-cloak
+          x-text="'+' + $store.filter.hiddenCount"></span>
+  </button>
+
+  <div class="menu-panel filter-panel" x-show="open" x-cloak>
+    <h3 class="menu-heading">Labels</h3>
+    <div class="filter-options">
+      {% for label in options.label %}
+        <button type="button" class="label-option is-label" style="--label-color: {{ label.color }}"
+                :aria-pressed="$store.filter.has({{ label.id }}).toString()"
+                @click="$store.filter.toggle({{ label.id }})">{{ label.name }}</button>
+      {% else %}
+        <p class="filter-empty">No labels yet. Add them from a card.</p>
+      {% endfor %}
+    </div>
+
+    <h3 class="menu-heading">People</h3>
+    <div class="filter-options">
+      {% for person in options.person %}
+        <button type="button" class="label-option is-person" style="--label-color: {{ person.color }}"
+                :aria-pressed="$store.filter.has({{ person.id }}).toString()"
+                @click="$store.filter.toggle({{ person.id }})">
+          <span class="person-chip">{{ person.name|initials }}</span>
+          {{ person.name }}
+        </button>
+      {% else %}
+        <p class="filter-empty">No people yet. Add them from a card.</p>
+      {% endfor %}
+    </div>
+
+    <div class="filter-match" role="group" aria-label="Which cards to show">
+      Show cards with
+      <button type="button" :aria-pressed="($store.filter.match === 'all').toString()"
+              @click="$store.filter.match = 'all'">all</button>
+      <button type="button" :aria-pressed="($store.filter.match === 'any').toString()"
+              @click="$store.filter.match = 'any'">any</button>
+      of these
+    </div>
+    <p class="hint" x-show="$store.filter.match === 'all'">Cards you add get them too.</p>
+    <p class="hint" x-show="$store.filter.match === 'any'" x-cloak>
+      Cards you add don't get them, since any one would do.
+    </p>
+    <button type="button" class="filter-clear" x-show="$store.filter.count" @click="$store.filter.clear()">
+      Clear filter
+    </button>
+  </div>
+</div>
+</div>

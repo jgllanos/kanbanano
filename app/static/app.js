@@ -41,13 +41,26 @@ document.addEventListener("alpine:init", () => {
   Alpine.data("boardList", () => ({
     composing: false,
     renaming: false,
+    leftOff: [], // ids of filter labels and people left off new cards, until the composer closes
 
     init() {
       composerForm(this.$refs.form, this.$refs.title, () => {
         const card = this.$refs.cards.lastElementChild;
-        card?.classList.add("just-added"); // exempt from the "Assigned to me" filter
+        card?.classList.add("just-added"); // exempt from the board filter
         card?.scrollIntoView({ block: "nearest" });
       });
+      // Changing the filter brings back anything left off.
+      this.$watch("[$store.filter.selected, $store.filter.match]", () => (this.leftOff = []));
+    },
+
+    // The labels and people a new card gets from the filter, minus any left off.
+    get defaults() {
+      return this.$store.filter.newCardOptions.filter((option) => !this.leftOff.includes(option.id));
+    },
+
+    leaveOff(id) {
+      this.leftOff = [...this.leftOff, id];
+      this.$refs.title.focus();
     },
 
     open() {
@@ -62,6 +75,7 @@ document.addEventListener("alpine:init", () => {
     close({ refocus = true } = {}) {
       if (!this.composing) return;
       this.composing = false;
+      this.leftOff = [];
       if (refocus) this.$root.focus(); // so `n` reopens this same list
     },
 
@@ -165,35 +179,84 @@ document.addEventListener("alpine:init", () => {
     },
   }));
 
-  // ---- "I am" picker and "Assigned to me" filter --------------------------
-  // Who you are is a per-device preference: a person's id for each board, saved
-  // in localStorage. It uses the id so renaming a person doesn't break it. When
-  // the server re-renders this widget, init() restores the saved state.
+  // ---- Board filter -------------------------------------------------------
+  // A per-device preference for each board, saved in localStorage. It uses ids,
+  // so renaming a label or person doesn't break it. It shows cards with all of
+  // the selected labels and people, or any of them. With "all", new cards get
+  // them too (see boardList).
+  //
+  // The store holds the state. The widget in the header (_filter.html) hands it
+  // the board's labels and people each time the server renders it, which also
+  // drops anything deleted since.
 
-  Alpine.data("identity", (boardId) => ({
-    me: "",
-    mine: false,
+  // How many selected labels and people the filter button shows by name.
+  const SUMMARY_LIMIT = 3;
+
+  Alpine.store("filter", {
+    boardId: null,
+    options: [], // the board's labels, then its people: {id, kind, name, color, initials}
+    selected: [], // label and person ids to filter by. Ids are unique across both.
+    match: "all", // "all" or "any" of the selected
 
     init() {
-      const saved = storage.get(`me:${boardId}`) ?? "";
-      const stillExists = [...this.$refs.select.options].some((o) => o.value === saved);
-      this.me = stillExists ? saved : "";
-      this.mine = this.me !== "" && storage.get(`mine:${boardId}`) === "1";
-
-      this.$watch("me", (me) => {
-        storage.set(`me:${boardId}`, me);
-        if (!me) this.mine = false;
-        this.apply();
+      Alpine.effect(() => {
+        if (this.boardId === null) return; // not on a board
+        const { selected, match } = this;
+        storage.set(`filter:${this.boardId}`, JSON.stringify({ selected, match }));
+        setBoardFilter(selected, match);
       });
-      this.$watch("mine", (mine) => {
-        storage.set(`mine:${boardId}`, mine ? "1" : "");
-        this.apply();
-      });
-      this.apply();
     },
 
-    apply() {
-      setMineFilter(this.mine ? this.me : null);
+    load(boardId, options) {
+      let saved = {};
+      try {
+        saved = JSON.parse(storage.get(`filter:${boardId}`)) ?? {};
+      } catch {}
+      const known = new Set(options.map((option) => option.id));
+      const selected = Array.isArray(saved.selected) ? saved.selected.filter((id) => known.has(id)) : [];
+      const match = saved.match === "any" ? "any" : "all";
+      Object.assign(this, { boardId, options, selected, match });
+    },
+
+    get count() {
+      return this.selected.length;
+    },
+
+    get selectedOptions() {
+      return this.options.filter((option) => this.selected.includes(option.id));
+    },
+
+    // The labels and people a new card gets, so it matches the filter. With
+    // "any" that would be too many: one of them would do, and which is unclear.
+    get newCardOptions() {
+      return this.match === "all" ? this.selectedOptions : [];
+    },
+
+    // For the filter button: the first few by name, then a count of the rest.
+    get shownOptions() {
+      return this.selectedOptions.slice(0, SUMMARY_LIMIT);
+    },
+
+    get hiddenCount() {
+      return Math.max(0, this.count - SUMMARY_LIMIT);
+    },
+
+    has(id) {
+      return this.selected.includes(id);
+    },
+
+    toggle(id) {
+      this.selected = this.has(id) ? this.selected.filter((other) => other !== id) : [...this.selected, id];
+    },
+
+    clear() {
+      this.selected = [];
+    },
+  });
+
+  Alpine.data("boardFilter", (boardId, options) => ({
+    init() {
+      this.$store.filter.load(boardId, options);
     },
   }));
 });
@@ -215,17 +278,21 @@ const storage = {
   },
 };
 
-// The filter is a generated CSS rule, so it also applies to cards added or
-// re-rendered later. Cards added with the composer while it's on are exempt, so
-// they don't disappear as you create them.
-const mineFilterStyle = document.createElement("style");
-document.head.append(mineFilterStyle);
+// The board filter is a generated CSS rule, so it also applies to cards added or
+// re-rendered later. With "all" it hides a card missing any selected label or
+// person; with "any", a card missing every one of them. Cards added with the
+// composer are exempt, so a card doesn't disappear as you create it, even if it
+// didn't get the filter's labels.
+const boardFilterStyle = document.createElement("style");
+document.head.append(boardFilterStyle);
 
-function setMineFilter(personId) {
-  const id = Number.parseInt(personId, 10); // interpolated into CSS: keep it a number
-  mineFilterStyle.textContent = Number.isInteger(id)
-    ? `.card:not(.just-added):not(:has(.person-chip[data-person-id="${id}"])) { display: none; }`
-    : "";
+function setBoardFilter(ids, match) {
+  const tags = ids
+    .filter(Number.isInteger) // interpolated into CSS: keep them numbers
+    .map((id) => `[data-label-id="${id}"], [data-person-id="${id}"]`);
+  const missing = match === "any" ? [tags.join(", ")] : tags;
+  const rules = tags.length ? missing.map((tag) => `.card:not(.just-added):not(:has(${tag}))`) : [];
+  boardFilterStyle.textContent = rules.length ? `${rules.join(",\n")} { display: none; }` : "";
 }
 
 function modalOpen() {
@@ -289,7 +356,7 @@ const ARROW_MOVES = {
   ArrowRight: [1, 0],
 };
 
-// Visible cards only: the "Assigned to me" filter hides the rest.
+// Visible cards only: the board filter hides the rest.
 function cardsIn(list) {
   return [...list.querySelectorAll(".card")].filter((card) => card.checkVisibility());
 }
@@ -493,9 +560,9 @@ document.addEventListener("htmx:afterSwap", initSortables);
 //
 // A refresh is held back, and the board marked stale, when it would replace
 // something in use: a focused field inside the refreshed area (a composer, a
-// title field, the "I am" picker), an open menu, a drag in progress, or one of
-// our saves in flight. It runs as soon as none of those apply. An open modal doesn't hold it
-// back, because the modal is outside the refreshed area. A refresh keeps scroll
+// title field), an open menu, a drag in progress, or one of our saves in flight.
+// It runs as soon as none of those apply. An open modal doesn't hold it back,
+// because the modal is outside the refreshed area. A refresh keeps scroll
 // positions, composer drafts and focus (htmx restores focus by id).
 
 let stale = false; // a poll found changes that couldn't be shown yet
@@ -594,7 +661,7 @@ document.addEventListener("htmx:afterSwap", (event) => {
 
 // Captures what a refresh would otherwise lose, and returns a function that
 // puts it back: scroll positions, composer drafts, and which cards were just
-// added (and so exempt from the "Assigned to me" filter).
+// added (and so exempt from the board filter).
 function snapshotBoard() {
   const container = document.getElementById("lists-container");
   const scrollLeft = container.scrollLeft;

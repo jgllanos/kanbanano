@@ -2,7 +2,8 @@
 {% if card.labels %}
   <div class="card-labels">
     {% for label in card.labels %}
-      <span class="label-pill" style="--label-color: {{ label.color }}">{{ label.name }}</span>
+      {# data-label-id is what the board filter matches on. #}
+      <span class="label-pill" style="--label-color: {{ label.color }}" data-label-id="{{ label.id }}">{{ label.name }}</span>
     {% endfor %}
   </div>
 {% endif %}
@@ -29,7 +30,7 @@
     {% endif %}
     <span class="card-people">
       {% for person in card.people %}
-        {# data-person-id is what the "Assigned to me" filter matches on. #}
+        {# data-person-id is what the board filter matches on. #}
         <span class="person-chip" style="--label-color: {{ person.color }}" title="{{ person.name }}"
               data-person-id="{{ person.id }}">{{ person.name|initials }}</span>
       {% endfor %}

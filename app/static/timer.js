@@ -524,7 +524,7 @@ document.addEventListener("alpine:init", () => {
 });
 
 // ---- Marking the focus card -----------------------------------------------
-// A generated CSS rule, like the "Assigned to me" filter, so it also applies to
+// A generated CSS rule, like the board filter, so it also applies to
 // cards a board refresh re-renders. The tag is styled in app.css. The outline is
 // inset, like .card:focus-visible, so the list's scroll container doesn't clip it.
 // The focus card stays visible when that filter is on.

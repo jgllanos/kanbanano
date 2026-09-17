@@ -293,6 +293,25 @@ def board_labels(conn: sqlite3.Connection, board_id: int) -> dict[str, list]:
     return options
 
 
+def filter_options(options: dict[str, list]) -> list[dict]:
+    """A board's labels, then its people, as JSON-ready dicts for the filter and
+    the card composer (see _filter.html and the filter store in app.js)."""
+    return [
+        {
+            "id": row["id"],
+            "kind": row["kind"],
+            "name": row["name"],
+            "color": row["color"],
+            "initials": initials(row["name"]),
+        }
+        for kind in ("label", "person")
+        for row in options[kind]
+    ]
+
+
+templates.env.filters["filter_options"] = filter_options
+
+
 def check_color(color: str) -> None:
     # Label colors go into style attributes, so this also keeps arbitrary CSS
     # out of the page.
@@ -409,7 +428,7 @@ def board_view(
         {
             "board": load_board(conn, board_id),
             "lists": load_lists(conn, board_id),
-            "people": board_labels(conn, board_id)["person"],
+            "options": board_labels(conn, board_id),
         },
     )
 
@@ -451,7 +470,7 @@ def update_board(
     return templates.TemplateResponse(
         request,
         "_board_header.html",
-        {"board": board, "people": board_labels(conn, board_id)["person"]},
+        {"board": board, "options": board_labels(conn, board_id)},
     )
 
 
@@ -493,7 +512,7 @@ def poll_board(
         {
             "board": board,
             "lists": load_lists(conn, board_id),
-            "people": board_labels(conn, board_id)["person"],
+            "options": board_labels(conn, board_id),
         },
     )
 
@@ -555,9 +574,15 @@ def create_card(
     request: Request,
     list_id: Annotated[int, Form()],
     title: Annotated[str, Form()],
+    label_ids: Annotated[list[int], Form()] = [],
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
-    """Add a card to the bottom of a list. Returns the new card's HTML."""
+    """Add a card to the bottom of a list. Returns the new card's HTML.
+
+    `label_ids` are labels and people to assign right away: the ones the board
+    filter is showing (see the composer in _list.html). Ids that aren't on the
+    list's board, for example deleted since the page loaded, are skipped.
+    """
     title = clean_text(title, "Card title")
     with conn:
         lst = load_list(conn, list_id)
@@ -568,6 +593,14 @@ def create_card(
             """,
             (list_id, title, list_id),
         ).lastrowid
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO card_labels (card_id, label_id)
+            SELECT ?, id FROM labels
+            WHERE board_id = ? AND id IN (SELECT value FROM json_each(?))
+            """,
+            (card_id, lst["board_id"], json.dumps(label_ids)),
+        )
         db.bump_version(conn, lst["board_id"])
 
     return templates.TemplateResponse(request, "_card.html", {"card": load_card(conn, card_id)})
@@ -751,25 +784,28 @@ def label_section(
     face_ids: Iterable[int],
     *,
     managing: bool = False,
-    people_changed: bool = False,
+    options_changed: bool = False,
 ):
     """Re-render the modal's labels or people section after a change.
 
     Also swaps out-of-band the faces of `face_ids` (every card showing what
-    changed) and, if the set of people changed, the header's "I am" picker.
+    changed) and, if a label or person was added, renamed, recolored or
+    deleted, the header's filter, which lists them.
     `managing` keeps the section in its edit view.
     """
     card = load_card(conn, card_id)
+    options = board_labels(conn, card["board_id"])
     return templates.TemplateResponse(
         request,
         "_label_section.html",
         {
             "card": card,
             "kind": kind,
-            "options": board_labels(conn, card["board_id"])[kind],
+            "options": options[kind],
+            "board_options": options,
             "managing": managing,
             "faces": load_cards(conn, face_ids),
-            "refresh_identity": kind == "person" and people_changed,
+            "refresh_filter": options_changed,
         },
     )
 
@@ -847,7 +883,7 @@ def create_label(
             "INSERT INTO card_labels (card_id, label_id) VALUES (?, ?)", (card_id, label_id)
         )
         db.bump_version(conn, card["board_id"])
-    return label_section(request, conn, card_id, kind, [card_id], people_changed=True)
+    return label_section(request, conn, card_id, kind, [card_id], options_changed=True)
 
 
 def cards_with_label(conn: sqlite3.Connection, label_id: int) -> list[int]:
@@ -885,7 +921,7 @@ def update_label(
         label["kind"],
         cards_with_label(conn, label_id),
         managing=True,
-        people_changed=True,
+        options_changed=True,
     )
 
 
@@ -902,7 +938,7 @@ def delete_label(
         conn.execute("DELETE FROM labels WHERE id = ?", (label_id,))
         db.bump_version(conn, card["board_id"])
     return label_section(
-        request, conn, card_id, label["kind"], affected, managing=True, people_changed=True
+        request, conn, card_id, label["kind"], affected, managing=True, options_changed=True
     )
 
 
