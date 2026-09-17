@@ -10,9 +10,21 @@
 CREATE TABLE IF NOT EXISTS boards (
     id          INTEGER PRIMARY KEY,
     title       TEXT    NOT NULL,
-    background  TEXT    NOT NULL DEFAULT '#0079bf',  -- hex color (uploaded filename later)
+    background  TEXT    NOT NULL DEFAULT '#0079bf',  -- '#rrggbb' or 'image:<token>', see board_images
     version     INTEGER NOT NULL DEFAULT 0,          -- bumped on every mutation, see db.bump_version
     created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+
+-- An uploaded board background, at most one per board. The bytes are here
+-- instead of in boards.background because that row is read on every poll and
+-- every write, and a photo would be read along with it each time. The token is
+-- part of the image's URL, so a new upload is served from a URL nothing has
+-- cached.
+CREATE TABLE IF NOT EXISTS board_images (
+    board_id      INTEGER PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
+    token         TEXT    NOT NULL,
+    content_type  TEXT    NOT NULL,
+    data          BLOB    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS lists (

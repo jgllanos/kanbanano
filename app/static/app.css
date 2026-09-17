@@ -135,6 +135,36 @@ body {
 /* Outlined like a pressed swatch when the background isn't one of the presets. */
 .custom-color.is-selected input { outline: 2px solid #0c66e4; outline-offset: 2px; }
 
+/* The photo picker. The file input is invisible rather than hidden, so it can
+   still be reached with the keyboard. */
+.photo-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+  margin-top: 0.625rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.photo-pick input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.photo-pick:focus-within { outline: 2px solid #0c66e4; outline-offset: 2px; }
+.photo-preview {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgb(9 30 66 / 0.25);
+  border-radius: 4px;
+}
+.photo-pick.is-selected .photo-preview { outline: 2px solid #0c66e4; outline-offset: 2px; }
+/* htmx puts .htmx-request on the label while the upload is in flight. */
+.photo-busy { display: none; color: var(--muted); }
+.photo-pick.htmx-request .photo-busy { display: inline; }
+.photo-pick.htmx-request .photo-label { display: none; }
+
 /* Board filter */
 .board-filter { margin-left: auto; font-size: 0.875rem; }
 .filter-open {
@@ -256,6 +286,9 @@ body {
   text-decoration: none;
 }
 .board-tile.dark-ink { color: var(--text); } /* a light background; see needs_dark_ink */
+/* Darkened so the title stays readable on any photo. The board itself does this
+   with --board-shade over the header and the lists panel. */
+.board-tile.has-photo { box-shadow: inset 0 0 0 100vmax rgb(0 0 0 / 0.3); }
 .board-tile:hover { filter: brightness(0.92); }
 .empty { color: var(--muted); }
 
@@ -334,11 +367,13 @@ body {
 
 /* ---- "Add a list" column ---- */
 
+/* Nothing opaque sits behind this column, so it needs its own tint. --board-wash
+   is dark over a photo and light over a color (see _board_menu.html). */
 .add-list {
   flex: 0 0 272px;
   padding: 0.25rem;
   border-radius: var(--radius);
-  background: rgb(var(--board-ink) / 0.24);
+  background: var(--board-wash, rgb(var(--board-ink) / 0.24));
 }
 .add-list-open {
   display: block;
@@ -403,8 +438,7 @@ body {
 
 /* ---- Lists panel ---- */
 
-/* Shaded like the top bar, so the two read as one piece of chrome on any board
-   background. */
+/* Shaded like the top bar, so the two match on any board background. */
 .list-rail {
   flex: 0 0 11rem;
   display: flex;
@@ -428,7 +462,7 @@ body {
   color: rgb(var(--board-ink));
 }
 .is-strip .rail-label { display: none; }
-/* How many lists are hidden, which the panel can't show as a strip. */
+/* How many lists are hidden, for when the panel is a strip and can't list them. */
 .rail-count {
   padding: 0 0.375rem;
   border-radius: 999px;
@@ -451,7 +485,7 @@ body {
   text-overflow: ellipsis;
 }
 .rail-list:hover { background: rgb(var(--board-ink) / 0.16); }
-/* A hidden list stays in the panel: it's the way back. */
+/* A hidden list stays in the panel, so it can be brought back. */
 .rail-list.is-hidden {
   color: rgb(var(--board-ink) / 0.55);
   text-decoration: line-through;

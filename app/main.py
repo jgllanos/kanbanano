@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import re
@@ -8,10 +9,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from PIL import Image, ImageOps
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import db
@@ -334,6 +336,38 @@ def clean_background(color: str) -> str:
     return color.lower()
 
 
+# Uploaded backgrounds. Every upload is re-encoded, so the stored bytes are
+# always a JPEG this app wrote.
+UPLOAD_LIMIT = 12 * 1024 * 1024  # the most that's read from an upload
+BACKGROUND_SIZE = (1920, 1920)  # a board background is never shown larger
+BACKGROUND_TYPE = "image/jpeg"
+
+
+def clean_background_image(data: bytes) -> bytes:
+    """Turn an uploaded file into a JPEG to use as a board background.
+
+    The upload is decoded and re-encoded, so only an image this app wrote is
+    ever served back. An HTML file named .jpg fails to decode and is rejected.
+    Re-encoding drops EXIF, including where a photo was taken. Shrinking keeps
+    a phone photo from being sent at full size to every device that opens the
+    board.
+    """
+    try:
+        image = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))  # apply the rotation flag
+        image.thumbnail(BACKGROUND_SIZE)  # never enlarges, and keeps the aspect ratio
+        # JPEG has no transparency. Converting straight to RGB would put
+        # transparent areas on black, so they're composited onto white below.
+        image = image.convert("RGBA")
+    except Exception:  # Pillow raises several different errors for a file it can't read
+        raise HTTPException(status_code=400, detail="That doesn't look like an image")
+
+    flat = Image.new("RGB", image.size, "white")
+    flat.paste(image, mask=image.getchannel("A"))
+    out = io.BytesIO()
+    flat.save(out, "JPEG", quality=82, optimize=True, progressive=True)
+    return out.getvalue()
+
+
 def relative_luminance(color: str) -> float:
     """WCAG relative luminance of a #rrggbb color: 0 for black, 1 for white."""
 
@@ -351,12 +385,40 @@ def needs_dark_ink(background: str) -> bool:
     Text stays white unless its contrast drops below 3:1, the WCAG minimum for
     large text and controls. Choosing whichever color has more contrast would
     switch several presets to dark text over very small differences.
+
+    A photo has no single brightness to measure, so uploaded backgrounds always
+    get white text. The header and the lists panel are shaded over the photo,
+    and everything else on the board has an opaque background of its own.
     """
+    if not HEX_COLOR.fullmatch(background):
+        return False
     contrast_with_white = 1.05 / (relative_luminance(background) + 0.05)
     return contrast_with_white < 3
 
 
+def image_token(background: str) -> str | None:
+    """The token in an 'image:<token>' background, or None for a color."""
+    prefix, _, token = background.partition(":")
+    return token if prefix == "image" else None
+
+
+def background_css(board: sqlite3.Row) -> str:
+    """The CSS `background` value for a board: its color, or its uploaded image.
+
+    This goes into a <style> element, like clean_background's color, so it must
+    not be attacker-controlled. The board id is an integer and the token is hex
+    from secrets, so nothing else can reach the URL. The url() is unquoted
+    because Jinja escapes quotes inside a style, and CSS allows it.
+    """
+    token = image_token(board["background"])
+    if token is None:
+        return board["background"]
+    return f"url(/boards/{board['id']}/background/{token}) center / cover no-repeat"
+
+
 templates.env.filters["needs_dark_ink"] = needs_dark_ink
+templates.env.filters["background_css"] = background_css
+templates.env.filters["image_token"] = image_token
 
 
 def get_label(conn: sqlite3.Connection, label_id: int, board_id: int) -> sqlite3.Row:
@@ -462,6 +524,9 @@ def update_board(
                 board_id,
             ),
         )
+        if background is not None:
+            # One background per board, so picking a color drops the photo.
+            conn.execute("DELETE FROM board_images WHERE board_id = ?", (board_id,))
         db.bump_version(conn, board_id)
 
     board = load_board(conn, board_id)
@@ -471,6 +536,73 @@ def update_board(
         request,
         "_board_header.html",
         {"board": board, "options": board_labels(conn, board_id)},
+    )
+
+
+@app.post("/boards/{board_id}/background", response_class=HTMLResponse)
+def upload_background(
+    request: Request,
+    board_id: int,
+    image: Annotated[UploadFile, File()],
+    conn: sqlite3.Connection = Depends(db.get_db),
+):
+    """Set a board's background to an uploaded photo.
+
+    Returns the settings menu, like picking a color does, so the menu stays
+    open. The board's background becomes 'image:<token>'. The token is also in
+    the image's URL, so a replacement photo gets a URL nothing has cached.
+    """
+    data = image.file.read(UPLOAD_LIMIT + 1)
+    if len(data) > UPLOAD_LIMIT:
+        raise HTTPException(status_code=400, detail="That image is too big (12MB at most)")
+    jpeg = clean_background_image(data)
+    token = secrets.token_hex(8)
+
+    with conn:
+        load_board(conn, board_id)
+        conn.execute(
+            """
+            INSERT INTO board_images (board_id, token, content_type, data) VALUES (?, ?, ?, ?)
+            ON CONFLICT (board_id) DO UPDATE
+                SET token = excluded.token, content_type = excluded.content_type,
+                    data = excluded.data
+            """,
+            (board_id, token, BACKGROUND_TYPE, jpeg),
+        )
+        conn.execute(
+            "UPDATE boards SET background = ? WHERE id = ?", (f"image:{token}", board_id)
+        )
+        db.bump_version(conn, board_id)
+
+    return templates.TemplateResponse(
+        request, "_board_menu.html", {"board": load_board(conn, board_id)}
+    )
+
+
+@app.get("/boards/{board_id}/background/{token}")
+def board_background(
+    board_id: int, token: str, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """A board's uploaded background.
+
+    A new upload gets a new token and a new URL, so this response can be cached
+    indefinitely. This is a normal route, so require_login applies to it; files
+    under /static are a mount, and mounts skip app-wide dependencies.
+    """
+    row = conn.execute(
+        "SELECT content_type, data FROM board_images WHERE board_id = ? AND token = ?",
+        (board_id, token),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="This image is gone")
+    return Response(
+        row["data"],
+        media_type=row["content_type"],
+        headers={
+            "Cache-Control": "private, max-age=31536000, immutable",
+            # Don't let a browser guess the type from the bytes.
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

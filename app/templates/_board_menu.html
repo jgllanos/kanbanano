@@ -1,17 +1,21 @@
-{# Board settings: background color and delete.
+{# Board settings: background color or photo, and delete.
 
-   Choosing a color swaps only this panel, so the menu stays open (`open` is on
-   the parent). The <style> sets the board's colors and applies wherever it is
-   in the page. --board-ink is the text color on the background, as RGB channels
-   so CSS can add alpha. --board-shade darkens the header. #}
+   Choosing a color or uploading a photo swaps only this panel, so the menu
+   stays open (`open` is on the parent). The <style> sets the board's colors and
+   applies wherever it is in the page. --board-ink is the text color on the
+   background, as RGB channels so CSS can add alpha. --board-shade darkens the
+   header and the lists panel, enough to read them over a photo. --board-wash
+   tints the "add a list" column, which has no shading of its own. #}
+{% set is_image = board.background | image_token %}
 {% set dark_ink = board.background | needs_dark_ink %}
 {% set is_preset = board.background in BOARD_COLORS.values() %}
 <div id="board-menu-panel" class="menu-panel board-menu-panel" x-show="open" x-cloak>
   <style>
     .board-page {
-      --board-bg: {{ board.background }};
+      --board-bg: {{ board | background_css }};
       --board-ink: {{ "23 43 77" if dark_ink else "255 255 255" }};
       --board-shade: {{ "0.06" if dark_ink else "0.25" }};
+      --board-wash: {{ "rgb(0 0 0 / 0.35)" if is_image else "rgb(var(--board-ink) / 0.24)" }};
     }
   </style>
 
@@ -28,12 +32,29 @@
 
   {# Some browsers fire `change` repeatedly while dragging in the picker; the
      delay turns that into one save. The id lets htmx restore focus after the
-     swap. #}
-  <label class="custom-color {{ 'is-selected' if not is_preset }}">
-    <input type="color" id="board-color" name="background" value="{{ board.background }}"
+     swap. With a photo set there's no color to show, so it starts from the
+     default. #}
+  <label class="custom-color {{ 'is-selected' if not is_preset and not is_image }}">
+    <input type="color" id="board-color" name="background"
+           value="{{ BOARD_COLORS['blue'] if is_image else board.background }}"
            hx-patch="/boards/{{ board.id }}" hx-trigger="change delay:400ms"
            hx-target="#board-menu-panel" hx-swap="outerHTML">
     Custom color
+  </label>
+
+  {# One photo per board. Uploading replaces it, and picking a color above drops
+     it. The request comes from the input rather than a form, so the encoding
+     goes on the input. #}
+  <label class="photo-pick {{ 'is-selected' if is_image }}">
+    {% if is_image %}
+      <span class="photo-preview" style="background: {{ board | background_css }}"></span>
+    {% endif %}
+    <span class="photo-label">{{ "Change photo" if is_image else "Upload a photo" }}</span>
+    <span class="photo-busy">Uploading…</span>
+    <input type="file" name="image" accept="image/*"
+           hx-post="/boards/{{ board.id }}/background" hx-encoding="multipart/form-data"
+           hx-trigger="change" hx-target="#board-menu-panel" hx-swap="outerHTML"
+           hx-indicator="closest .photo-pick">
   </label>
 
   <hr class="menu-divider">

@@ -266,7 +266,8 @@ document.addEventListener("alpine:init", () => {
   // applied the same way, as a generated CSS rule.
   //
   // The store holds the state. The panel (_list_rail.html) reads its items from
-  // the board, so adds, renames, deletes and drags need no server support.
+  // the board, so a list added, renamed, deleted or dragged needs no server
+  // support.
 
   Alpine.store("rail", {
     boardId: null,
@@ -303,8 +304,8 @@ document.addEventListener("alpine:init", () => {
       this.hidden = this.isHidden(id) ? this.hidden.filter((other) => other !== id) : [...this.hidden, id];
     },
 
-    // From the list's own menu (_list_header.html): the list goes out from under
-    // the focus, so put the focus on it in the panel instead.
+    // Called from the list's own menu (_list_header.html). The list disappears
+    // while the menu inside it has the focus, so move the focus to the panel.
     hide(id) {
       if (!this.isHidden(id)) this.hidden = [...this.hidden, id];
       Alpine.nextTick(() => focusRailItem(id));
@@ -325,9 +326,9 @@ document.addEventListener("alpine:init", () => {
     init() {
       this.$store.rail.load(boardId);
       this.read();
-      // Lists are added, renamed, deleted and dragged without this panel being
-      // told, and a poll replaces #lists-container itself. Watching the panel's
-      // parent for any change covers all of it, including that replacement.
+      // Nothing tells the panel when a list is added, renamed, deleted or
+      // dragged, and a poll replaces #lists-container itself. Watching the
+      // parent element for any change covers all of those.
       new MutationObserver(() => this.read()).observe(this.$root.parentElement, {
         childList: true,
         subtree: true,
@@ -335,8 +336,8 @@ document.addEventListener("alpine:init", () => {
     },
 
     // Rebuilds the items from the board. Rendering the panel is itself a change
-    // the observer sees, so this returns early unless something really changed
-    // and the observer settles after one extra pass.
+    // the observer sees, so this returns early when the result is the same and
+    // the observer stops after one extra pass.
     read() {
       const lists = [...document.querySelectorAll("#lists-container .list")].map((list) => ({
         id: Number(list.dataset.listId),
@@ -383,9 +384,9 @@ function setBoardFilter(ids, match) {
   boardFilterStyle.textContent = rules.length ? `${rules.join(",\n")} { display: none; }` : "";
 }
 
-// Lists hidden from the panel, also a generated CSS rule, so it survives a board
-// refresh re-rendering the lists. Hidden lists stay in the page, so a drag still
-// posts the order of every list, not just the visible ones.
+// Lists hidden from the panel, as a generated CSS rule, so hiding survives a
+// board refresh re-rendering the lists. A hidden list is still in the page, so
+// a drag posts the order of every list, including the hidden ones.
 const hiddenListStyle = document.createElement("style");
 document.head.append(hiddenListStyle);
 
@@ -429,8 +430,8 @@ function trackCurrentList(event) {
 document.addEventListener("mouseover", trackCurrentList);
 document.addEventListener("focusin", trackCurrentList);
 
-// Lists hidden from the lists panel are skipped: the keyboard only reaches
-// what's on the board.
+// Lists hidden from the lists panel are skipped, so the keyboard only reaches
+// lists that are on the board.
 function visibleLists() {
   return [...document.querySelectorAll(".list")].filter((list) => list.checkVisibility());
 }

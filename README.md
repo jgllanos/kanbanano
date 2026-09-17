@@ -1,9 +1,15 @@
 # Kanbanano
 
-A small self-hosted kanban board for a household or a few people: boards, lists and
-cards with drag and drop, labels, people, checklists, a pomodoro timer, and changes
-from other people showing up within a few seconds. Auth relies on one shared password instead of user
-accounts.
+A small self-hosted kanban board for a household or a few people. Auth relies on one
+shared password instead of user accounts.
+
+- Boards, lists and cards, with drag and drop
+- Labels and people, and a filter for both
+- Checklists on cards
+- A lists panel for putting lists you aren't using out of the way
+- A board background: one of nine colors, any custom color, or a photo
+- A pomodoro timer
+- Changes from other people showing up within a few seconds
 
 It's a FastAPI app with server-rendered HTML (htmx, Alpine.js, SortableJS) and a
 single SQLite file. There's no build step, and the JavaScript libraries are bundled,
@@ -113,7 +119,7 @@ everyone out, change `SECRET_KEY` as well, then run `docker compose up -d`.
 ```
 
 This writes `board-YYYY-MM-DD.db`. It's safe to run while people are using the
-board. To run it nightly, add a cron entry for a user that can run `docker`:
+board. Uploaded background photos are in the database too, so they're included. To run it nightly, add a cron entry for a user that can run `docker`:
 
 ```cron
 0 3 * * * /path/to/kanbanano/backup.sh /path/to/backups
