@@ -12,7 +12,9 @@ REPO = Path(__file__).parent.parent
 def test_backup_writes_a_usable_copy_to_stdout(client, conn, board, tmp_path):
     # A write through the app, so the copy has to include what's in the WAL.
     client.post("/cards", data={"list_id": board.todo, "title": "Paint"})
-    (db_path,) = conn.execute("SELECT file FROM pragma_database_list WHERE name = 'main'").fetchone()
+    (db_path,) = conn.execute(
+        "SELECT file FROM pragma_database_list WHERE name = 'main'"
+    ).fetchone()
 
     result = subprocess.run(
         [sys.executable, "-m", "app.backup"],

@@ -8,7 +8,6 @@ from fastapi.routing import APIRoute
 from itsdangerous import TimestampSigner
 
 from app.config import SESSION_MAX_AGE
-from app.main import app
 from app.routes import ROUTERS
 from app.security import LOGIN_EXEMPT
 from conftest import PASSWORD, make_client, version

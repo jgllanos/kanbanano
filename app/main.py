@@ -79,6 +79,14 @@ async def report_board_version(request: Request, call_next):
 # Added last so it runs first, before anything reads the session. The cookie is
 # signed but not encrypted, and only holds the logged-in flag. Starlette re-sends
 # it on every response, so the year counts from a device's last visit.
+#
+# same_site="lax" is the only thing stopping another site from posting here as a
+# logged-in visitor; there are no CSRF tokens behind it. Browsers keep the cookie
+# off a cross-site POST, but still send it when someone follows a link in, which
+# is a GET. So no route may change anything on a GET: one could be set off by a
+# link or an <img> on any page anywhere, with the cookie attached. Every write
+# here is a POST, PATCH or DELETE, and has to stay that way.
+# test_the_session_cookie_is_locked_down pins the setting itself.
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,

@@ -184,9 +184,7 @@ def upload_background(
             """,
             (board_id, token, BACKGROUND_TYPE, jpeg),
         )
-        conn.execute(
-            "UPDATE boards SET background = ? WHERE id = ?", (f"image:{token}", board_id)
-        )
+        conn.execute("UPDATE boards SET background = ? WHERE id = ?", (f"image:{token}", board_id))
         db.bump_version(conn, board_id)
 
     return templates.TemplateResponse(

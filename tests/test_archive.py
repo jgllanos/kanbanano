@@ -13,9 +13,7 @@ from conftest import delete_for_good, version
 
 
 def archived(conn: sqlite3.Connection, table: str, row_id: int) -> bool:
-    (stamp,) = conn.execute(
-        f"SELECT archived_at FROM {table} WHERE id = ?", (row_id,)
-    ).fetchone()
+    (stamp,) = conn.execute(f"SELECT archived_at FROM {table} WHERE id = ?", (row_id,)).fetchone()
     return stamp is not None
 
 
@@ -113,7 +111,8 @@ def test_archiving_a_list_takes_its_cards_off_the_board_too(client, conn, board)
     assert "To do" not in page and "Tap" not in page
     assert "Done" in page  # the board's other list
     assert archived(conn, "lists", board.todo)
-    assert conn.execute("SELECT COUNT(*) FROM cards WHERE archived_at IS NOT NULL").fetchone()[0] == 0
+    still_archived = conn.execute("SELECT COUNT(*) FROM cards WHERE archived_at IS NOT NULL")
+    assert still_archived.fetchone()[0] == 0
 
 
 def test_restoring_a_list_brings_its_cards_back_with_it(client, conn, board):
@@ -147,9 +146,9 @@ def test_archiving_every_card_leaves_already_archived_ones_alone(client, conn, b
 
     client.post(f"/lists/{board.todo}/archive-cards")
 
-    assert conn.execute(
-        "SELECT archived_at FROM cards WHERE id = ?", (first,)
-    ).fetchone()[0] == stamp
+    assert (
+        conn.execute("SELECT archived_at FROM cards WHERE id = ?", (first,)).fetchone()[0] == stamp
+    )
 
 
 def test_deleting_an_archived_list_takes_its_cards(client, conn, board):

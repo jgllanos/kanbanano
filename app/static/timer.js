@@ -43,15 +43,28 @@ function defaultTimerState() {
   };
 }
 
+// Whether a saved value can stand in for the default it's replacing. Storage is
+// hand-editable and a write can be cut short, and the state goes straight into
+// code that assumes its shape: a `recents` that isn't an array throws on every
+// sync and takes the whole dock down with it. A null default holds whatever the
+// phase needs, so anything goes there.
+function sameShape(value, fallback) {
+  if (fallback === null) return true;
+  if (Array.isArray(fallback)) return Array.isArray(value);
+  if (typeof fallback === "object") return typeof value === "object" && value !== null;
+  return typeof value === typeof fallback;
+}
+
 function readSaved(key, defaults) {
   let saved = {};
   try {
     saved = JSON.parse(storage.get(key)) ?? {};
   } catch {}
-  // Only known keys, so a stale or hand-edited value can't add anything else.
+  // Only known keys, so a stale or hand-edited value can't add anything else,
+  // and only ones shaped like what they're replacing.
   const result = { ...defaults };
   for (const name of Object.keys(defaults)) {
-    if (name in saved) result[name] = saved[name];
+    if (name in saved && sameShape(saved[name], defaults[name])) result[name] = saved[name];
   }
   return result;
 }

@@ -17,8 +17,28 @@ dependencies = [
 dev = [
     "httpx>=0.28.1",  # what fastapi.testclient drives the app through
     "pytest>=8.4.2",
+    "ruff>=0.14.0",  # uv run ruff check / uv run ruff format
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]  # the app isn't installed as a package; import it from the repo root
+
+[tool.ruff]
+line-length = 100  # what the code was already written to
+
+[tool.ruff.lint]
+# On top of the defaults (E4, E7, E9, F): W for whitespace, I to keep imports
+# sorted, B for the bug-shaped mistakes (mutable default arguments and the
+# like), UP for syntax this Python is new enough for.
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+# conftest sits at the repo root like `app` does (see pythonpath above), so it
+# groups with it rather than with the installed packages.
+known-first-party = ["app", "conftest"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI reads a parameter's default to find out how to fill it in, so these
+# calls belong there and aren't the mutable default B008 is looking for.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Form"]

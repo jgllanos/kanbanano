@@ -131,7 +131,10 @@ def reorder_lists(
         on_board = {
             row["id"]
             for row in conn.execute(
-                "SELECT id FROM lists WHERE board_id = ? AND id IN (SELECT value FROM json_each(?))",
+                """
+                SELECT id FROM lists
+                WHERE board_id = ? AND id IN (SELECT value FROM json_each(?))
+                """,
                 (board_id, id_list(list_ids)),
             )
         }

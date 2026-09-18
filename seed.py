@@ -84,12 +84,18 @@ def main() -> None:
                 ).lastrowid
                 for card_pos, title in enumerate(cards):
                     card_id = conn.execute(
-                        "INSERT INTO cards (list_id, title, description, position) VALUES (?, ?, ?, ?)",
+                        """
+                        INSERT INTO cards (list_id, title, description, position)
+                        VALUES (?, ?, ?, ?)
+                        """,
                         (list_id, title, spec.get("descriptions", {}).get(title, ""), card_pos),
                     ).lastrowid
                     conn.executemany(
                         "INSERT INTO card_labels (card_id, label_id) VALUES (?, ?)",
-                        [(card_id, label_ids[name]) for name in spec.get("assign", {}).get(title, [])],
+                        [
+                            (card_id, label_ids[name])
+                            for name in spec.get("assign", {}).get(title, [])
+                        ],
                     )
     conn.close()
     print(f"Seeded {len(BOARDS)} boards into {db.DB_PATH}")

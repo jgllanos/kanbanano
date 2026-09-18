@@ -60,7 +60,9 @@ def clean_background_image(data: bytes) -> bytes:
         # transparent areas on black, so they're composited onto white below.
         image = image.convert("RGBA")
     except Exception:  # Pillow raises several different errors for a file it can't read
-        raise HTTPException(status_code=400, detail="That doesn't look like an image")
+        # `from None`: which decoder gave up on the file tells the person who
+        # picked it nothing, and this runs on anything anyone uploads.
+        raise HTTPException(status_code=400, detail="That doesn't look like an image") from None
 
     flat = Image.new("RGB", image.size, "white")
     flat.paste(image, mask=image.getchannel("A"))

@@ -81,9 +81,7 @@ def test_cards_cannot_be_moved_to_another_board(client, conn, board):
     client.post("/lists", data={"board_id": other_board, "title": "Inbox"})
     (other_list,) = conn.execute("SELECT id FROM lists WHERE title = 'Inbox'").fetchone()
 
-    response = reorder(
-        client, other_list, board.cards, from_list_id=board.todo, from_card_ids=[]
-    )
+    response = reorder(client, other_list, board.cards, from_list_id=board.todo, from_card_ids=[])
 
     assert response.status_code == 400
     assert card_order(conn, board.todo) == board.cards

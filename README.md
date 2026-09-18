@@ -111,6 +111,22 @@ Logins last a year from a device's last visit. Changing `BOARD_PASSWORD` doesn't
 log anyone out, because a session doesn't record which password was used. To log
 everyone out, change `SECRET_KEY` as well, then run `docker compose up -d`.
 
+## Tradeoffs
+
+The app's design makes the following assumptions:
+
+- **Only devices on a network you control can reach it.** One shared password
+  gets you in, and there is no rate limiting or lockout to slow down guessing.
+  Somewhere public, guesses are limited only by how fast the network answers.
+  Use a long password, and host the app behind Tailscale or on your own LAN.
+- **Everyone with the password is trusted.** People are labels, the same as
+  any other label, and there are no accounts. Nothing records who changed what,
+  and anyone who's in can do anything, including permanently deleting boards.
+- **Everyone's browser honors `SameSite`.** The app marks the login cookie
+  `SameSite=Lax`, which stops another site from acting as you. Since there are
+  no CSRF tokens, an older browser can allow any page you open to post to the
+  board while you're logged in.
+
 ## Backups
 
 `backup.sh` copies the database out of the running container:
@@ -165,3 +181,10 @@ uv run pytest
 ```
 
 The tests use their own temporary databases and never touch `board.db`.
+
+Lint and format with [Ruff](https://docs.astral.sh/ruff/):
+
+```sh
+uv run ruff check .
+uv run ruff format .
+```

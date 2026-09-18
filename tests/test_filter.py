@@ -37,7 +37,11 @@ def assigned(conn, title):
 def test_a_new_card_gets_the_labels_and_people_sent_with_it(client, conn, board, labels):
     response = client.post(
         "/cards",
-        data={"list_id": board.todo, "title": "Gate", "label_ids": [labels["house"], labels["juan"]]},
+        data={
+            "list_id": board.todo,
+            "title": "Gate",
+            "label_ids": [labels["house"], labels["juan"]],
+        },
     )
 
     assert response.status_code == 200
@@ -72,7 +76,11 @@ def test_creating_a_card_with_labels_bumps_the_version_once(client, conn, board,
 
     client.post(
         "/cards",
-        data={"list_id": board.todo, "title": "Gate", "label_ids": [labels["house"], labels["juan"]]},
+        data={
+            "list_id": board.todo,
+            "title": "Gate",
+            "label_ids": [labels["house"], labels["juan"]],
+        },
     )
 
     assert version(conn, board.id) == before + 1

@@ -66,7 +66,7 @@ def test_a_rejected_save_reports_what_it_lost_to(client, conn, board):
 
 
 def test_keeping_your_version_wins_with_the_token_from_the_conflict(client, conn, board):
-    """"Keep mine" is the same save again, against the version it lost to."""
+    """ "Keep mine" is the same save again, against the version it lost to."""
     card = board.cards[0]
     stale = card_updated_at(conn, card)
     client.patch(f"/cards/{card}", data={"updated_at": stale, "description": "theirs"})
@@ -79,7 +79,8 @@ def test_keeping_your_version_wins_with_the_token_from_the_conflict(client, conn
     )
 
     assert response.status_code == 200
-    assert conn.execute("SELECT description FROM cards WHERE id = ?", (card,)).fetchone()[0] == "mine"
+    stored = conn.execute("SELECT description FROM cards WHERE id = ?", (card,)).fetchone()
+    assert stored[0] == "mine"
 
 
 def test_editing_a_deleted_card_404s(client, conn, board):
@@ -109,7 +110,11 @@ def writes(board):
         ("POST", "/cards", {"list_id": board.todo, "title": "Paint"}),
         ("POST", "/cards/reorder", {"list_id": board.todo, "card_ids": board.cards[::-1]}),
         ("POST", "/lists/reorder", {"board_id": board.id, "list_ids": [board.done, board.todo]}),
-        ("POST", "/labels", {"card_id": card, "kind": "label", "name": "Urgent", "color": "#f87168"}),
+        (
+            "POST",
+            "/labels",
+            {"card_id": card, "kind": "label", "name": "Urgent", "color": "#f87168"},
+        ),
         ("POST", f"/cards/{card}/labels", {"label_id": 1}),
         ("DELETE", f"/cards/{card}/labels/1", None),
         ("PATCH", "/labels/1", {"card_id": card, "name": "Later", "color": "#4bce97"}),
