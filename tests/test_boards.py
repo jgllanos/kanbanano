@@ -4,7 +4,7 @@ import pytest
 
 from app import db
 from app.main import needs_dark_ink
-from conftest import card_order, list_order, version
+from conftest import card_order, delete_for_good, list_order, version
 
 
 def test_pages_render(client, board):
@@ -127,7 +127,7 @@ def test_renaming_and_recoloring_leave_each_other_alone(client, conn, board):
 
 def test_delete_board_takes_its_lists_and_cards_with_it(client, conn, board):
     """Deleting for good is reached from the index's archived section."""
-    response = client.request("DELETE", f"/boards/{board.id}")
+    response = delete_for_good(client, "boards", board.id)
 
     assert 'id="board-tiles"' in response.text  # the index's tiles, re-rendered
     for table in ["boards", "lists", "cards"]:
@@ -135,7 +135,7 @@ def test_delete_board_takes_its_lists_and_cards_with_it(client, conn, board):
 
 
 def test_a_deleted_board_404s(client, conn, board):
-    client.request("DELETE", f"/boards/{board.id}")
+    delete_for_good(client, "boards", board.id)
 
     assert client.get(f"/boards/{board.id}").status_code == 404
     assert client.patch(f"/boards/{board.id}", data={"title": "House"}).status_code == 404
@@ -179,16 +179,16 @@ def test_rename_list_rejects_a_blank_title(client, conn, board):
 def test_delete_list_takes_its_cards_with_it(client, conn, board):
     before = version(conn, board.id)
 
-    response = client.request("DELETE", f"/lists/{board.todo}")
+    response = delete_for_good(client, "lists", board.todo)
 
     assert response.status_code == 200
     assert list_order(conn, board.id) == [board.done]
     assert conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 0
-    assert version(conn, board.id) == before + 1
+    assert version(conn, board.id) == before + 2  # archiving bumps it too
 
 
 def test_a_deleted_list_404s(client, conn, board):
-    client.request("DELETE", f"/lists/{board.todo}")
+    delete_for_good(client, "lists", board.todo)
 
     assert client.patch(f"/lists/{board.todo}", data={"title": "Backlog"}).status_code == 404
     assert client.request("DELETE", f"/lists/{board.todo}").status_code == 404

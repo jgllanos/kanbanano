@@ -5,7 +5,7 @@ contiguous from 0 and matches the order the client sent. `card_order` and
 `list_order` assert the contiguity part.
 """
 
-from conftest import ordering, version
+from conftest import delete_for_good, ordering, version
 
 
 def card_order(conn, list_id):
@@ -60,7 +60,7 @@ def test_cards_the_client_did_not_know_about_keep_their_place(client, conn, boar
 
 def test_ids_for_deleted_cards_are_ignored(client, conn, board):
     tap, bins, shelf = board.cards
-    client.request("DELETE", f"/cards/{bins}")
+    delete_for_good(client, "cards", bins)
 
     reorder(client, board.todo, [shelf, bins, tap])
 
@@ -91,7 +91,7 @@ def test_cards_cannot_be_moved_to_another_board(client, conn, board):
 
 
 def test_reordering_into_a_deleted_list_404s(client, conn, board):
-    client.request("DELETE", f"/lists/{board.done}")
+    delete_for_good(client, "lists", board.done)
 
     response = reorder(client, board.done, board.cards, from_list_id=board.todo)
 
@@ -121,7 +121,7 @@ def test_a_delete_leaves_a_gap_that_the_next_reorder_closes(client, conn, board)
     """Deletes don't renumber. A gap doesn't change the order, and renumbering
     would rewrite every sibling on each delete."""
     tap, bins, shelf = board.cards
-    client.request("DELETE", f"/cards/{bins}")
+    delete_for_good(client, "cards", bins)
 
     assert ordering(conn, "cards", "list_id", board.todo) == [(tap, 0), (shelf, 2)]
 

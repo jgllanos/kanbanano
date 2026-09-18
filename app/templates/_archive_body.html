@@ -7,7 +7,9 @@
       {% for list in archive.lists %}
         <li class="archive-row">
           <span class="archive-title">{{ list.title }}</span>
-          {# Every card in the list, since archiving a list doesn't archive its cards. #}
+          {# What a restore brings back. Cards archived on their own beforehand
+             stay archived and are listed below, so they aren't counted here —
+             but deleting the list does take them, so the confirm counts them. #}
           <span class="archive-detail">
             {{ list.card_count }} card{{ 's' if list.card_count != 1 }}
           </span>
@@ -15,7 +17,7 @@
                   hx-target="#archive-body" hx-swap="outerHTML">Restore</button>
           <button type="button" class="danger" hx-delete="/lists/{{ list.id }}"
                   hx-target="#archive-body" hx-swap="outerHTML"
-                  hx-confirm="Delete this list and its {{ list.card_count }} card{{ 's' if list.card_count != 1 }} for good? This can't be undone.">
+                  hx-confirm="Delete this list and its {{ list.total_count }} card{{ 's' if list.total_count != 1 }} for good? This can't be undone.">
             Delete for good
           </button>
         </li>

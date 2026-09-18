@@ -1,0 +1,5 @@
+{# Response to a background change, by color or by photo: the settings menu, so
+   it stays open, plus the board's colors out-of-band, since the menu is no
+   longer where they're defined. #}
+{% include "_board_menu.html" %}
+{% with oob=True %}{% include "_board_style.html" %}{% endwith %}

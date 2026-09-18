@@ -108,10 +108,14 @@ async def report_board_version(request: Request, call_next):
 
     The client uses it to avoid refetching its own change on the next poll (see
     adoptVersion in app.js).
+
+    Only on a success: bump_version records the new version on the connection as
+    a side effect, and a transaction that rolled back after bumping would leave
+    it holding a version nobody else will ever see.
     """
     response = await call_next(request)
     conn = getattr(request.state, "db", None)
-    if conn is not None and conn.board_version is not None:
+    if response.status_code < 400 and conn is not None and conn.board_version is not None:
         response.headers["X-Board-Version"] = str(conn.board_version)
     return response
 
@@ -149,11 +153,26 @@ def clean_text(value: str, what: str) -> str:
     return value
 
 
-def attach_labels(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
+def id_list(ids: Iterable[int]) -> str:
+    """Ids as JSON, for the `IN (SELECT value FROM json_each(?))` pattern.
+
+    SQLite has no array parameter, and building an IN list by hand would mean
+    interpolating the ids into the SQL. json_each keeps them parameters.
+    """
+    return json.dumps(list(ids))
+
+
+# The attach_* pair fills in columns that need a second query. Both mutate the
+# card dicts in place and return nothing, so a caller can't be in doubt about
+# which copy is the up-to-date one.
+
+
+def attach_labels(conn: sqlite3.Connection, cards: list[dict]) -> None:
     """Give each card dict `labels` and `people` lists, in creation order. One query."""
-    by_id = {card["id"]: card for card in cards}
+    by_id = {}
     for card in cards:
         card["labels"], card["people"] = [], []
+        by_id[card["id"]] = card
     for row in conn.execute(
         """
         SELECT card_labels.card_id, labels.id, labels.name, labels.color, labels.kind
@@ -161,21 +180,21 @@ def attach_labels(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
         WHERE card_labels.card_id IN (SELECT value FROM json_each(?))
         ORDER BY labels.id
         """,
-        (json.dumps(list(by_id)),),
+        (id_list(by_id),),
     ):
         by_id[row["card_id"]]["people" if row["kind"] == "person" else "labels"].append(row)
-    return cards
 
 
-def attach_progress(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
+def attach_progress(conn: sqlite3.Connection, cards: list[dict]) -> None:
     """Give each card dict `checklist_done` and `checklist_total`. One query.
 
     These are the counts shown on the card face. The modal loads the items
     themselves with load_checklist.
     """
-    by_id = {card["id"]: card for card in cards}
+    by_id = {}
     for card in cards:
         card["checklist_done"], card["checklist_total"] = 0, 0
+        by_id[card["id"]] = card
     for row in conn.execute(
         """
         SELECT card_id, SUM(done) AS done, COUNT(*) AS total
@@ -183,11 +202,10 @@ def attach_progress(conn: sqlite3.Connection, cards: list[dict]) -> list[dict]:
         WHERE card_id IN (SELECT value FROM json_each(?))
         GROUP BY card_id
         """,
-        (json.dumps(list(by_id)),),
+        (id_list(by_id),),
     ):
         by_id[row["card_id"]]["checklist_done"] = row["done"]
         by_id[row["card_id"]]["checklist_total"] = row["total"]
-    return cards
 
 
 def load_checklist(conn: sqlite3.Connection, card_id: int) -> list[sqlite3.Row]:
@@ -268,17 +286,45 @@ def load_lists(conn: sqlite3.Connection, board_id: int) -> list[dict]:
 # The same clock as the schema's created_at and updated_at defaults.
 NOW = "strftime('%Y-%m-%d %H:%M:%f', 'now')"
 
+ARCHIVABLE = ("boards", "lists", "cards")
+
+
+def archive(conn: sqlite3.Connection, table: str, row_id: int) -> None:
+    """Mark a row archived, now. Leaves an already-archived row alone, so its
+    archived_at stays the moment it was archived rather than the last attempt."""
+    assert table in ARCHIVABLE  # the table name is interpolated, so pin it to these
+    conn.execute(
+        f"UPDATE {table} SET archived_at = {NOW} WHERE id = ? AND archived_at IS NULL",
+        (row_id,),
+    )
+
+
+def require_archived(row: sqlite3.Row, what: str) -> None:
+    """Refuse to delete something that's still in use.
+
+    Deleting for good is only offered from the archive, but a page open since
+    before someone restored it would still show the button. Archiving is the one
+    way in, so the check belongs here rather than only in the template.
+    """
+    if row["archived_at"] is None:
+        raise HTTPException(status_code=409, detail=f"Archive this {what} before deleting it")
+
 
 def load_archive(conn: sqlite3.Connection, board_id: int) -> dict[str, list]:
     """A board's archived lists and cards, newest first.
 
-    If a list is archived, all of its cards stay within the list, instead of being archived
-    individually. So we show a count for each archived list to indicate its contents.
+    Archiving a list doesn't archive its cards: they stay in it and come back
+    with it, so they aren't listed separately. Each archived list shows how many
+    cards a restore would bring back (`card_count`), and how many a delete would
+    take (`total_count`, which includes any archived on their own beforehand and
+    so listed below as well).
     """
     lists = conn.execute(
         """
         SELECT id, title, archived_at,
-               (SELECT COUNT(*) FROM cards WHERE cards.list_id = lists.id) AS card_count
+               (SELECT COUNT(*) FROM cards
+                WHERE cards.list_id = lists.id AND cards.archived_at IS NULL) AS card_count,
+               (SELECT COUNT(*) FROM cards WHERE cards.list_id = lists.id) AS total_count
         FROM lists
         WHERE board_id = ? AND archived_at IS NOT NULL
         ORDER BY archived_at DESC, id DESC
@@ -297,28 +343,52 @@ def load_archive(conn: sqlite3.Connection, board_id: int) -> dict[str, list]:
     return {"lists": lists, "cards": cards}
 
 
-def load_cards(conn: sqlite3.Connection, card_ids: Iterable[int]) -> list[dict]:
-    """Cards with everything their face and modal need. Deleted ids are skipped."""
+# What _card_face.html draws. The description itself isn't among it — only
+# whether there is one — so a face doesn't carry one around.
+FACE_COLUMNS = """
+    cards.id, cards.list_id, cards.title, cards.description != '' AS has_description,
+    lists.board_id, lists.title AS list_title
+"""
+
+
+def load_faces(conn: sqlite3.Connection, card_ids: Iterable[int]) -> list[dict]:
+    """Cards with what their face needs. Deleted ids are skipped.
+
+    Renaming or deleting a label re-renders the face of every card carrying it,
+    which is why this stays narrow.
+    """
     rows = conn.execute(
+        f"""
+        SELECT {FACE_COLUMNS}
+        FROM cards JOIN lists ON lists.id = cards.list_id
+        WHERE cards.id IN (SELECT value FROM json_each(?))
+        """,
+        (id_list(card_ids),),
+    )
+    cards = [dict(row) for row in rows]
+    attach_labels(conn, cards)
+    attach_progress(conn, cards)
+    return cards
+
+
+def load_card(conn: sqlite3.Connection, card_id: int) -> dict:
+    """One card in full: its face, plus the description and updated_at that the
+    modal and the writes need. 404 if it's been deleted."""
+    row = conn.execute(
         """
         SELECT cards.*, cards.description != '' AS has_description,
                lists.board_id, lists.title AS list_title
         FROM cards JOIN lists ON lists.id = cards.list_id
-        WHERE cards.id IN (SELECT value FROM json_each(?))
+        WHERE cards.id = ?
         """,
-        (json.dumps(list(card_ids)),),
-    )
-    cards = [dict(row) for row in rows]
-    attach_labels(conn, cards)
-    return attach_progress(conn, cards)
-
-
-def load_card(conn: sqlite3.Connection, card_id: int) -> dict:
-    """One card, as load_cards. 404 if it's been deleted."""
-    cards = load_cards(conn, [card_id])
-    if not cards:
+        (card_id,),
+    ).fetchone()
+    if row is None:
         raise HTTPException(status_code=404, detail="This card was deleted")
-    return cards[0]
+    card = dict(row)
+    attach_labels(conn, [card])
+    attach_progress(conn, [card])
+    return card
 
 
 def board_labels(conn: sqlite3.Connection, board_id: int) -> dict[str, list]:
@@ -560,6 +630,10 @@ def update_board(
     Escape reverts to) matches the saved title. A background change returns only
     the settings menu, so the menu stays open.
     """
+    if title is None and background is None:
+        # Writing the row back unchanged would still bump the version, and send
+        # every other client to refetch the whole board for nothing.
+        raise HTTPException(status_code=400, detail="That save was empty")
     if title is not None:
         title = clean_text(title, "Board title")
     if background is not None:
@@ -582,7 +656,7 @@ def update_board(
 
     board = load_board(conn, board_id)
     if background is not None:
-        return templates.TemplateResponse(request, "_board_menu.html", {"board": board})
+        return templates.TemplateResponse(request, "_board_menu_saved.html", {"board": board})
     return templates.TemplateResponse(
         request,
         "_board_header.html",
@@ -621,11 +695,10 @@ def board_archive(
 
 @app.post("/boards/{board_id}/archive")
 def archive_board(board_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
-    """Take a board off the index, keeping everything on it.
-    """
+    """Take a board off the index, keeping everything on it."""
     with conn:
         load_board(conn, board_id)
-        conn.execute(f"UPDATE boards SET archived_at = {NOW} WHERE id = ?", (board_id,))
+        archive(conn, "boards", board_id)
         db.bump_version(conn, board_id)
     return Response(status_code=204, headers={"HX-Redirect": "/"})
 
@@ -678,7 +751,7 @@ def upload_background(
         db.bump_version(conn, board_id)
 
     return templates.TemplateResponse(
-        request, "_board_menu.html", {"board": load_board(conn, board_id)}
+        request, "_board_menu_saved.html", {"board": load_board(conn, board_id)}
     )
 
 
@@ -719,7 +792,7 @@ def delete_board(
     286 instead.
     """
     with conn:
-        load_board(conn, board_id)
+        require_archived(load_board(conn, board_id), "board")
         conn.execute("DELETE FROM boards WHERE id = ?", (board_id,))
     return templates.TemplateResponse(request, "_board_tiles.html", index_tiles(conn))
 
@@ -806,6 +879,7 @@ def delete_list(
     """Delete an archived list and its cards for good, from the archive dialog."""
     with conn:
         lst = load_list(conn, list_id)
+        require_archived(lst, "list")
         conn.execute("DELETE FROM lists WHERE id = ?", (list_id,))
         db.bump_version(conn, lst["board_id"])
     return archive_response(request, conn, lst["board_id"])
@@ -820,7 +894,7 @@ def archive_list(list_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
     """
     with conn:
         lst = load_list(conn, list_id)
-        conn.execute(f"UPDATE lists SET archived_at = {NOW} WHERE id = ?", (list_id,))
+        archive(conn, "lists", list_id)
         db.bump_version(conn, lst["board_id"])
     return HTMLResponse("")
 
@@ -863,7 +937,7 @@ def create_card(
     request: Request,
     list_id: Annotated[int, Form()],
     title: Annotated[str, Form()],
-    label_ids: Annotated[list[int], Form()] = [],
+    label_ids: Annotated[list[int] | None, Form()] = None,
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
     """Add a card to the bottom of a list. Returns the new card's HTML.
@@ -888,7 +962,7 @@ def create_card(
             SELECT ?, id FROM labels
             WHERE board_id = ? AND id IN (SELECT value FROM json_each(?))
             """,
-            (card_id, lst["board_id"], json.dumps(label_ids)),
+            (card_id, lst["board_id"], id_list(label_ids or [])),
         )
         db.bump_version(conn, lst["board_id"])
 
@@ -933,7 +1007,7 @@ def reorder_cards(
     list_id: Annotated[int, Form()],
     card_ids: Annotated[list[int], Form()],
     from_list_id: Annotated[int | None, Form()] = None,
-    from_card_ids: Annotated[list[int], Form()] = [],
+    from_card_ids: Annotated[list[int] | None, Form()] = None,
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
     """Save card order after a drag.
@@ -941,6 +1015,7 @@ def reorder_cards(
     Takes the full card order of the list the card was dropped in and, for a
     move between lists, the full order of the list it left (possibly empty).
     """
+    from_card_ids = from_card_ids or []
     orders = {list_id: card_ids}
     if from_list_id is not None and from_list_id != list_id:
         orders[from_list_id] = from_card_ids
@@ -948,7 +1023,7 @@ def reorder_cards(
     with conn:
         lists = conn.execute(
             "SELECT id, board_id FROM lists WHERE id IN (SELECT value FROM json_each(?))",
-            (json.dumps(list(orders)),),
+            (id_list(orders),),
         ).fetchall()
         if len(lists) < len(orders):
             raise HTTPException(status_code=404, detail="This list was deleted")
@@ -965,7 +1040,7 @@ def reorder_cards(
                 SELECT cards.id FROM cards JOIN lists ON lists.id = cards.list_id
                 WHERE lists.board_id = ? AND cards.id IN (SELECT value FROM json_each(?))
                 """,
-                (board_id, json.dumps(card_ids + from_card_ids)),
+                (board_id, id_list(card_ids + from_card_ids)),
             )
         }
         in_request = set(card_ids) | set(from_card_ids)
@@ -988,7 +1063,7 @@ def reorder_lists(
             row["id"]
             for row in conn.execute(
                 "SELECT id FROM lists WHERE board_id = ? AND id IN (SELECT value FROM json_each(?))",
-                (board_id, json.dumps(list_ids)),
+                (board_id, id_list(list_ids)),
             )
         }
         known = [id_ for id_ in dict.fromkeys(list_ids) if id_ in on_board]
@@ -1009,6 +1084,33 @@ def card_detail(card_id: int, request: Request, conn: sqlite3.Connection = Depen
             "items": load_checklist(conn, card_id),
         },
     )
+
+
+@app.get("/cards/{card_id}/status")
+def card_status(card_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
+    """Whether a card is still on its board, only archived, or gone for good.
+
+    The focus timer asks this when the card it's tracking isn't on the page.
+    Archiving takes a card off the board, and so does archiving its list or its
+    board, all of which look exactly like a deletion from the client's side. A
+    card that's only archived stays in the dock, because restoring it brings it
+    back (see syncFocusWithPage in timer.js).
+    """
+    row = conn.execute(
+        """
+        SELECT (cards.archived_at IS NOT NULL
+                OR lists.archived_at IS NOT NULL
+                OR boards.archived_at IS NOT NULL) AS archived
+        FROM cards
+        JOIN lists ON lists.id = cards.list_id
+        JOIN boards ON boards.id = lists.board_id
+        WHERE cards.id = ?
+        """,
+        (card_id,),
+    ).fetchone()
+    if row is None:
+        return {"state": "gone"}
+    return {"state": "archived" if row["archived"] else "board"}
 
 
 @app.patch("/cards/{card_id}", response_class=HTMLResponse)
@@ -1076,6 +1178,7 @@ def delete_card(
     """Delete an archived card for good. Returns the archive dialog's contents."""
     with conn:
         card = load_card(conn, card_id)
+        require_archived(card, "card")
         conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
         db.bump_version(conn, card["board_id"])
     return archive_response(request, conn, card["board_id"])
@@ -1091,7 +1194,7 @@ def archive_card(card_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
     """
     with conn:
         card = load_card(conn, card_id)
-        conn.execute(f"UPDATE cards SET archived_at = {NOW} WHERE id = ?", (card_id,))
+        archive(conn, "cards", card_id)
         db.bump_version(conn, card["board_id"])
     return HTMLResponse("")
 
@@ -1143,7 +1246,7 @@ def label_section(
             "options": options[kind],
             "board_options": options,
             "managing": managing,
-            "faces": load_cards(conn, face_ids),
+            "faces": load_faces(conn, face_ids),
             "refresh_filter": options_changed,
         },
     )
@@ -1330,6 +1433,8 @@ def update_checklist_item(
     `done` is the value to set. A toggle would let a stale modal undo someone
     else's change; the label endpoints avoid toggles for the same reason.
     """
+    if done is None and text is None:
+        raise HTTPException(status_code=400, detail="That save was empty")
     if text is not None:
         text = clean_text(text, "Checklist item")
     with conn:

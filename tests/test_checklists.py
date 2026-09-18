@@ -2,7 +2,7 @@
 
 import pytest
 
-from conftest import ordering, version
+from conftest import delete_for_good, ordering, version
 
 
 def item_ids(conn, card_id) -> list[int]:
@@ -52,7 +52,7 @@ def test_a_blank_item_is_rejected(client, conn, board):
 
 def test_adding_an_item_to_a_deleted_card_404s(client, board):
     card_id = board.cards[0]
-    client.request("DELETE", f"/cards/{card_id}")
+    delete_for_good(client, "cards", card_id)
 
     assert client.post(f"/cards/{card_id}/checklist", data={"text": "X"}).status_code == 404
 
@@ -108,7 +108,7 @@ def test_a_deleted_item_404s(client, conn, card):
 
 
 def test_deleting_a_card_takes_its_checklist_with_it(client, conn, card):
-    client.request("DELETE", f"/cards/{card}")
+    delete_for_good(client, "cards", card)
 
     assert conn.execute("SELECT COUNT(*) FROM checklist_items").fetchone()[0] == 0
 

@@ -563,38 +563,96 @@ document.addEventListener(
 );
 
 // ---- Keeping the focus card up to date ------------------------------------
-// The saved titles are refreshed from the board on screen, and cards deleted
-// since are forgotten. Card ids are unique across boards, so a card missing from
-// its own board is gone. On the board index, the same goes for deleted boards.
+// The saved titles are refreshed from the board on screen. A card that isn't on
+// the board any more hasn't necessarily been deleted: archiving it, its list or
+// its board takes it off just as thoroughly, and it comes back if any of those
+// is restored. The page can't tell those apart, so the server is asked (see
+// card_status in main.py) and only a card that's really gone is dropped.
+//
+// Card ids are unique across boards, so a card on a board we aren't looking at
+// can't be checked from here and is left alone.
 
-function syncFocusWithPage() {
+// One status request per card per page load, since an archived focus card stays
+// in the dock and every htmx request would otherwise ask about it again. The
+// entry is dropped as soon as the card is back on the page.
+const cardStatus = new Map(); // cardId -> Promise<"board" | "archived" | "gone" | "unknown">
+
+function fetchCardStatus(cardId) {
+  if (!cardStatus.has(cardId)) {
+    cardStatus.set(
+      cardId,
+      fetch(`/cards/${cardId}/status`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body) => body?.state ?? "unknown") // offline, or the session expired
+        .catch(() => "unknown"),
+    );
+  }
+  return cardStatus.get(cardId);
+}
+
+async function syncFocusWithPage() {
   const timer = Alpine.store("timer");
   const container = document.getElementById("lists-container");
   const boardId = Number(container?.dataset.boardId);
   const tiles = document.querySelector(".board-tiles");
-
-  // Returns the card's fresh info, or null if it's been deleted. Cards on
-  // another board can't be checked from here, so they're returned unchanged.
-  const check = (info) => {
-    if (tiles) return tiles.querySelector(`a[href="/boards/${info.boardId}"]`) ? info : null;
-    if (info.boardId !== boardId) return info;
-    const card = document.getElementById(`card-${info.cardId}`);
-    return card ? cardInfo(card) : null;
-  };
   if (!container?.dataset.boardId && !tiles) return; // login, or a deleted board
 
-  const before = JSON.stringify([timer.focus, timer.recents]);
-  if (timer.focus) {
-    const fresh = check(timer.focus);
-    if (!fresh) flash(tiles ? "The board you were focusing on was deleted." : "The card you were focusing on was deleted.");
-    timer.focus = fresh;
+  // The card's fresh info, marked `archived` if it's only off the board, or
+  // null once it's gone for good.
+  const check = async (info) => {
+    if (tiles) {
+      // From the index only the board can be checked, and an archived board is
+      // still a tile (see _board_tiles.html), so a missing one really is gone.
+      return document.querySelector(`.board-tile[data-board-id="${info.boardId}"]`) ? info : null;
+    }
+    if (info.boardId !== boardId) return info;
+    const card = document.getElementById(`card-${info.cardId}`);
+    if (card) {
+      cardStatus.delete(info.cardId);
+      return { ...cardInfo(card), archived: false };
+    }
+    const state = await fetchCardStatus(info.cardId);
+    if (state === "gone") return null;
+    if (state === "unknown") return info; // couldn't ask, so change nothing
+    return { ...info, archived: true };
+  };
+
+  const focusBefore = timer.focus;
+  const recentsBefore = timer.recents;
+  const before = JSON.stringify([focusBefore, recentsBefore]);
+  const focus = focusBefore ? await check(focusBefore) : null;
+  const recents = (await Promise.all(recentsBefore.map(check))).filter(Boolean);
+  // Someone picked a different card while we were asking; their choice wins.
+  if (timer.focus !== focusBefore || timer.recents !== recentsBefore) return;
+
+  if (focusBefore && !focus) {
+    flash(
+      tiles
+        ? "The board you were focusing on was deleted."
+        : "The card you were focusing on was deleted.",
+    );
+  } else if (focus?.archived && !focusBefore.archived) {
+    flash("The card you were focusing on was archived. Restore it from the board's archive.");
   }
-  timer.recents = timer.recents.map(check).filter(Boolean);
+  timer.focus = focus;
+  timer.recents = recents;
   if (JSON.stringify([timer.focus, timer.recents]) !== before) timer.save();
 }
 
 // After board refreshes and our own changes. A deleted card is removed by a
 // swap on the card itself, whose events don't reach the document once it's
-// gone, so afterRequest (from the delete button) is watched too.
-document.addEventListener("htmx:afterSettle", () => setTimeout(syncFocusWithPage));
-document.addEventListener("htmx:afterRequest", () => setTimeout(syncFocusWithPage));
+// gone, so afterRequest (from the delete button) is watched too. Both fire for
+// most requests, so the run is queued once rather than done twice.
+let syncQueued = false;
+
+function queueFocusSync() {
+  if (syncQueued) return;
+  syncQueued = true;
+  setTimeout(() => {
+    syncQueued = false;
+    syncFocusWithPage();
+  });
+}
+
+document.addEventListener("htmx:afterSettle", queueFocusSync);
+document.addEventListener("htmx:afterRequest", queueFocusSync);

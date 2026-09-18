@@ -4,8 +4,11 @@
   <ul class="board-tiles">
     {% for board in boards %}
       <li>
+        {# data-board-id is how the focus timer tells an archived board from a
+           deleted one: an archived tile is still here, just not a link. #}
         <a class="board-tile {{ 'dark-ink' if board.background | needs_dark_ink }}
                   {{ 'has-photo' if board.background | image_token }}"
+           data-board-id="{{ board.id }}"
            href="/boards/{{ board.id }}" style="background: {{ board | background_css }}">
           {{ board.title }}
         </a>
@@ -24,6 +27,7 @@
         <li class="archived-board">
           <span class="board-tile {{ 'dark-ink' if board.background | needs_dark_ink }}
                        {{ 'has-photo' if board.background | image_token }}"
+                data-board-id="{{ board.id }}"
                 style="background: {{ board | background_css }}">{{ board.title }}</span>
           <div class="archived-actions">
             <button type="button" hx-post="/boards/{{ board.id }}/restore"

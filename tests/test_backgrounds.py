@@ -9,7 +9,7 @@ import io
 from PIL import Image
 
 from app.main import UPLOAD_LIMIT
-from conftest import version
+from conftest import delete_for_good, version
 
 
 def photo(size=(1200, 800), mode="RGB", format="JPEG", **save) -> bytes:
@@ -163,6 +163,6 @@ def test_renaming_the_board_keeps_the_photo(client, conn, board):
 def test_deleting_the_board_takes_the_photo_with_it(client, conn, board):
     upload(client, board.id)
 
-    client.request("DELETE", f"/boards/{board.id}")
+    delete_for_good(client, "boards", board.id)
 
     assert conn.execute("SELECT COUNT(*) FROM board_images").fetchone()[0] == 0

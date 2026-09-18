@@ -88,6 +88,20 @@ def board(conn) -> Board:
     return Board(id=board_id, todo=todo, done=done, cards=cards)
 
 
+# ---- Request helpers ------------------------------------------------------
+
+
+def delete_for_good(client: TestClient, kind: str, row_id: int, **params):
+    """Delete a board, list or card permanently, the way the UI does.
+
+    Deleting is only offered from the archive, and the endpoints refuse anything
+    still in use, so getting rid of something takes both steps. Tests that only
+    need the thing gone use this; the ones about archiving spell it out.
+    """
+    client.post(f"/{kind}/{row_id}/archive")
+    return client.request("DELETE", f"/{kind}/{row_id}", params=params)
+
+
 # ---- Assertion helpers ----------------------------------------------------
 
 

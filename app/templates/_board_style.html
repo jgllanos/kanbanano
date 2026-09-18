@@ -1,0 +1,19 @@
+{# The board's own colors, as a rule rather than inline styles, so they reach
+   every part of the page including the parts a poll re-renders.
+
+   --board-ink is the text color on the background, as RGB channels so CSS can
+   add alpha. --board-shade darkens the header and the lists panel, enough to
+   read them over a photo. --board-wash tints the "add a list" column, which has
+   no shading of its own.
+
+   oob: a background change swaps only the settings menu, so the board's colors
+   have to come back alongside it (see _board_menu_saved.html). #}
+<style id="board-style" {% if oob %}hx-swap-oob="true"{% endif %}>
+  .board-page {
+    --board-bg: {{ board | background_css }};
+    --board-ink: {{ "23 43 77" if board.background | needs_dark_ink else "255 255 255" }};
+    --board-shade: {{ "0.06" if board.background | needs_dark_ink else "0.25" }};
+    --board-wash: {{ "rgb(0 0 0 / 0.35)" if board.background | image_token
+                     else "rgb(var(--board-ink) / 0.24)" }};
+  }
+</style>

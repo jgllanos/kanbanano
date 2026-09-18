@@ -2,7 +2,7 @@
 
 import pytest
 
-from conftest import version
+from conftest import delete_for_good, version
 
 
 def card_updated_at(conn, card_id):
@@ -27,7 +27,7 @@ def test_poll_returns_the_board_once_it_has_changed(client, conn, board):
 
 
 def test_poll_tells_htmx_to_stop_once_the_board_is_gone(client, board):
-    client.request("DELETE", f"/boards/{board.id}")
+    delete_for_good(client, "boards", board.id)
 
     response = client.get(f"/boards/{board.id}/poll", params={"v": 0})
 
@@ -85,7 +85,7 @@ def test_keeping_your_version_wins_with_the_token_from_the_conflict(client, conn
 def test_editing_a_deleted_card_404s(client, conn, board):
     card = board.cards[0]
     stale = card_updated_at(conn, card)
-    client.request("DELETE", f"/cards/{card}")
+    delete_for_good(client, "cards", card)
 
     response = client.patch(
         f"/cards/{card}", data={"updated_at": stale, "title": "Tap", "description": "A"}
@@ -117,7 +117,10 @@ def writes(board):
         ("POST", f"/cards/{card}/checklist", {"text": "Washer"}),
         ("PATCH", "/checklist/1", {"done": 1}),
         ("DELETE", "/checklist/1", None),
+        # Deleting for good only works on something archived, so each pair runs together.
+        ("POST", f"/cards/{card}/archive", None),
         ("DELETE", f"/cards/{card}", None),
+        ("POST", f"/lists/{board.todo}/archive", None),
         ("DELETE", f"/lists/{board.todo}", None),
     ]
 

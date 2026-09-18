@@ -9,7 +9,7 @@ import sqlite3
 import pytest
 
 from app import db
-from conftest import version
+from conftest import delete_for_good, version
 
 
 def archived(conn: sqlite3.Connection, table: str, row_id: int) -> bool:
@@ -96,7 +96,7 @@ def test_deleting_an_archived_card_for_good(client, conn, board):
 
 def test_archiving_a_deleted_card_404s(client, conn, board):
     card = board.cards[0]
-    client.request("DELETE", f"/cards/{card}")
+    delete_for_good(client, "cards", card)
 
     assert client.post(f"/cards/{card}/archive").status_code == 404
     assert client.post(f"/cards/{card}/restore").status_code == 404

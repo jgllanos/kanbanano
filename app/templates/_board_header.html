@@ -1,6 +1,9 @@
 {# The board's top bar. Polls re-render it out-of-band so other people's changes
    show up. app.js holds the refresh back while anything in it has focus. #}
 <header id="board-header" class="topbar" {% if oob %}hx-swap-oob="true"{% endif %}>
+  {# oob=False: it's swapped as part of the header here, so it mustn't also be
+     swapped on its own. #}
+  {% with oob=False %}{% include "_board_style.html" %}{% endwith %}
   <a href="/" class="brand">Kanbanano</a>
 
   {# Saves on change. The response replaces the whole header, so Escape reverts

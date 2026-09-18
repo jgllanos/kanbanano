@@ -1,24 +1,11 @@
 {# Board settings: background color or photo, and delete.
 
    Choosing a color or uploading a photo swaps only this panel, so the menu
-   stays open (`open` is on the parent). The <style> sets the board's colors and
-   applies wherever it is in the page. --board-ink is the text color on the
-   background, as RGB channels so CSS can add alpha. --board-shade darkens the
-   header and the lists panel, enough to read them over a photo. --board-wash
-   tints the "add a list" column, which has no shading of its own. #}
+   stays open (`open` is on the parent), and sends the board's colors along with
+   it (see _board_menu_saved.html and _board_style.html). #}
 {% set is_image = board.background | image_token %}
-{% set dark_ink = board.background | needs_dark_ink %}
 {% set is_preset = board.background in BOARD_COLORS.values() %}
 <div id="board-menu-panel" class="menu-panel board-menu-panel" x-show="open" x-cloak>
-  <style>
-    .board-page {
-      --board-bg: {{ board | background_css }};
-      --board-ink: {{ "23 43 77" if dark_ink else "255 255 255" }};
-      --board-shade: {{ "0.06" if dark_ink else "0.25" }};
-      --board-wash: {{ "rgb(0 0 0 / 0.35)" if is_image else "rgb(var(--board-ink) / 0.24)" }};
-    }
-  </style>
-
   <h3 class="menu-heading">Background</h3>
   <div class="board-swatches">
     {% for name, hex in BOARD_COLORS.items() %}
