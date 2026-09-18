@@ -1,9 +1,11 @@
+{# Escape and the backdrop go through close(), which stops if something inside
+   has unsaved work (see cardModal). #}
 <dialog class="card-modal" x-data="cardModal({{ card.id }}, {{ card.list_id }})"
-        @mousedown.self="$root.close()" aria-labelledby="card-modal-title">
+        @mousedown.self="close()" @cancel.prevent="close()" aria-labelledby="card-modal-title">
   <div class="modal-content">
     <div class="modal-top">
       <p class="modal-context">In list <strong>{{ card.list_title }}</strong></p>
-      <button type="button" class="modal-close" aria-label="Close" @click="$root.close()">✕</button>
+      <button type="button" class="modal-close" aria-label="Close" @click="close()">✕</button>
     </div>
 
     <div class="modal-error" role="alert" x-show="error" x-cloak>
@@ -13,18 +15,73 @@
       </button>
     </div>
 
-    {# Saves on change, when a field loses focus after an edit. Closing the modal
-       triggers it too, so closing mid-edit saves. #}
-    <form class="card-form" hx-patch="/cards/{{ card.id }}" hx-trigger="change" hx-swap="none">
-      <input type="hidden" id="card-updated-at" name="updated_at" value="{{ card.updated_at }}">
+    {# The conflict token for both forms below, which each hx-include it. It's
+       one value for the whole card, and a save's response replaces it, so
+       saving one field doesn't leave the other one stale. #}
+    <input type="hidden" id="card-updated-at" name="updated_at" value="{{ card.updated_at }}">
+
+    {# The title saves itself when it loses focus after an edit. Closing the
+       modal triggers that too, so closing mid-edit saves the title. #}
+    <form class="card-form" hx-patch="/cards/{{ card.id }}" hx-trigger="change" hx-swap="none"
+          hx-include="#card-updated-at">
       <textarea name="title" id="card-modal-title" class="modal-title" rows="1" required
                 aria-label="Card title" @keydown.enter.prevent="$el.blur()">{{ card.title }}</textarea>
-
-      <label class="field-label" for="card-description">Description</label>
-      <textarea name="description" id="card-description" rows="4" placeholder="Add more detail…"
-                @keydown.ctrl.enter="$el.blur()" @keydown.meta.enter="$el.blur()">{{ card.description }}</textarea>
-      <p class="hint">Saves when you leave the field. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> saves now.</p>
     </form>
+
+    {# The description is Markdown, shown rendered. Edit swaps in the textarea,
+       and nothing is saved until Save is pressed. #}
+    <div class="description" x-data="descriptionEditor" :data-unsaved="dirty">
+      <div class="description-head">
+        <label class="field-label" for="card-description">Description</label>
+        <button type="button" class="description-edit" x-show="!editing" @click="edit()"
+                x-text="hasText ? 'Edit' : 'Add'">Edit</button>
+      </div>
+
+      {# Read-only, so it can be styled as part of the card rather than as a
+         field. Editing is the button's job. #}
+      <div id="card-description-view" class="markdown" x-show="!editing">
+        {% include "_description.html" %}
+      </div>
+
+      <form class="card-form" id="description-form" x-ref="form" x-show="editing" x-cloak
+            hx-patch="/cards/{{ card.id }}" hx-swap="none" hx-include="#card-updated-at">
+        <textarea name="description" id="card-description" rows="4" placeholder="Add more detail…"
+                  x-ref="field" @input="dirty = $el.value !== original"
+                  @keydown.escape.prevent.stop="cancel()"
+                  @keydown.ctrl.enter="save()" @keydown.meta.enter="save()">{{ card.description }}</textarea>
+
+        {# Shown instead of Save and Cancel when a save has been rejected,
+           because every way out of a conflict is a different save. #}
+        <div class="conflict" role="alert" x-show="conflict" x-cloak>
+          <p class="conflict-lead">
+            <span x-text="error"></span> Their version:
+          </p>
+          <pre class="conflict-theirs"
+               x-text="conflict?.description || '(they cleared the description)'"></pre>
+          <div class="conflict-actions">
+            <button type="button" @click="keepMine()">Keep mine</button>
+            <button type="button" @click="keepBoth()">Keep both</button>
+            {# Theirs is already saved, so taking it is a reload of the card. #}
+            <button type="button" hx-get="/cards/{{ card.id }}" hx-target="#modal-root">
+              Use theirs
+            </button>
+          </div>
+        </div>
+
+        <div class="description-actions" x-show="!conflict">
+          <button type="button" class="primary" @click="save()">Save</button>
+          <button type="button" @click="cancel()">Cancel</button>
+          <span class="hint">
+            Markdown is supported. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> saves,
+            <kbd>Esc</kbd> cancels.
+          </span>
+        </div>
+
+        {# Anything that isn't a conflict: offline, or the card deleted. #}
+        <p class="description-error" role="alert" x-show="error && !conflict" x-cloak
+           x-text="error"></p>
+      </form>
+    </div>
 
     {% include "_checklist.html" %}
 

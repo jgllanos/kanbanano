@@ -150,7 +150,12 @@ document.addEventListener("alpine:init", () => {
   // GET /cards/{id} swaps a <dialog> into #modal-root, and it opens itself.
   // Closing leaves it in place (closed) until the next card replaces it, so a
   // save triggered by closing can still finish and report errors here.
-  // Errors from anything inside the modal are shown in the modal.
+  // Errors from anything inside the modal are shown in the modal, except from
+  // the parts that report their own (see SELF_REPORTING).
+
+  // Sections of the modal with their own error area. A failure inside one
+  // belongs there, next to the thing that failed, not in the bar at the top.
+  const SELF_REPORTING = "#description-form";
 
   Alpine.data("cardModal", (cardId, listId) => ({
     error: "",
@@ -166,16 +171,117 @@ document.addEventListener("alpine:init", () => {
       });
     },
 
+    // Every way out of the modal comes through here, so that an unfinished edit
+    // inside it gets to object first. Anything holding unsaved work marks
+    // itself data-unsaved; the description editor is the only one so far.
+    close() {
+      const unsaved = this.$root.querySelector("[data-unsaved]");
+      if (unsaved && !confirm("Close the card and lose your unsaved description?")) return;
+      this.$root.close();
+    },
+
     afterRequest({ successful, xhr, elt }) {
       if (successful) {
         this.error = "";
         if (elt === this.$refs.archiveButton) this.$root.close();
         return;
       }
+      if (elt.closest(SELF_REPORTING)) return;
       // A save triggered by closing the modal failed. Reopen it so the text isn't lost.
       if (!this.$root.open) this.$root.showModal();
       this.error = xhr.status ? errorMessage(xhr.status, xhr.responseText) : OFFLINE_MESSAGE;
       this.canReload = xhr.status === 409;
+    },
+  }));
+
+  // ---- Card description ---------------------------------------------------
+  // Markdown, rendered by the server. The modal shows the rendered HTML, the
+  // Edit button swaps in a textarea, and nothing is saved until Save is
+  // pressed. The response brings the re-rendered HTML back with it (see
+  // _card_saved.html), so closing the editor lands on the saved version.
+  //
+  // `original` is the description as the server last confirmed it: it's what
+  // Cancel restores and what `dirty` is measured against. Nothing here reads
+  // the rendered HTML, only the textarea.
+  //
+  // This block reports its own errors, in its own footer, rather than in the
+  // modal's error bar (see cardModal).
+
+  Alpine.data("descriptionEditor", () => ({
+    editing: false,
+    dirty: false,
+    original: "", // the description as last saved; Cancel goes back to it
+    hasText: false, // drives the Edit/Add label
+    error: "",
+    conflict: null, // their version and token, once a save is rejected
+
+    init() {
+      this.original = this.$refs.field.value;
+      this.hasText = this.original.trim() !== "";
+      // The form is inside this element, so its htmx events bubble through here.
+      this.$el.addEventListener("htmx:afterRequest", ({ detail }) => this.afterSave(detail));
+      this.$el.addEventListener("htmx:sendError", () => (this.error = OFFLINE_MESSAGE));
+    },
+
+    edit() {
+      this.editing = true;
+      this.$nextTick(() => {
+        const field = this.$refs.field;
+        field.focus();
+        field.setSelectionRange(field.value.length, field.value.length); // type at the end
+      });
+    },
+
+    save() {
+      // Nothing to send: an empty save would still move updated_at, which would
+      // turn everyone else's open modal into a conflict for no reason.
+      if (!this.dirty) return this.cancel();
+      this.$refs.form.requestSubmit(); // htmx picks the submit up
+    },
+
+    cancel() {
+      this.$refs.field.value = this.original;
+      this.dirty = false;
+      this.editing = false;
+      this.conflict = null;
+      this.error = "";
+    },
+
+    afterSave({ successful, xhr }) {
+      if (successful) {
+        this.original = this.$refs.field.value;
+        this.hasText = this.original.trim() !== "";
+        this.dirty = false;
+        this.editing = false; // onto the HTML that came back with the response
+        this.conflict = null;
+        this.error = "";
+        return;
+      }
+      if (!xhr.status) return (this.error = OFFLINE_MESSAGE);
+      this.error = errorMessage(xhr.status, xhr.responseText);
+      // A 409 carries the version this save lost to, so the three ways out
+      // below can each work from it. Anything else is just a message.
+      this.conflict = xhr.status === 409 ? conflictFrom(xhr.responseText) : null;
+      if (this.conflict) updatedAtField().value = this.conflict.updated_at;
+    },
+
+    // Their version loses: the token has already been moved on to theirs, so
+    // sending the same text again overwrites it.
+    keepMine() {
+      this.conflict = null;
+      this.error = "";
+      this.$refs.form.requestSubmit();
+    },
+
+    // Neither version is thrown away. The editor stays open on the two of them
+    // for the actual merging, which only a person can do.
+    keepBoth() {
+      const field = this.$refs.field;
+      field.value = [field.value, this.conflict.description].filter(Boolean).join("\n\n---\n\n");
+      this.dirty = true;
+      this.conflict = null;
+      this.error = "";
+      field.focus();
     },
   }));
 
@@ -561,6 +667,21 @@ function errorMessage(status, body) {
     if (typeof detail === "string") return detail;
   } catch {}
   return `Something went wrong (${status})`;
+}
+
+// The card's shared conflict token. Both of the modal's forms send it, and a
+// save's response replaces it (see _card_modal.html).
+const updatedAtField = () => document.getElementById("card-updated-at");
+
+// A rejected description save: the stored version and the token it's now at
+// (see update_card). Null if the body isn't one, so a 409 from anywhere else
+// is reported as a plain message.
+function conflictFrom(body) {
+  try {
+    const { description, updated_at } = JSON.parse(body);
+    if (typeof description === "string" && updated_at) return { description, updated_at };
+  } catch {}
+  return null;
 }
 
 // The card modal shows its own errors (see cardModal).

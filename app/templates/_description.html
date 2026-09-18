@@ -1,0 +1,8 @@
+{# A card's description, rendered from Markdown. It's read-only — the Edit
+   button opens the editor (see descriptionEditor in app.js) — and it's swapped
+   back in after a save, so both the modal and the save's response include it. #}
+{% if card.description %}
+  {{ card.description|markdown }}
+{% else %}
+  <p class="description-empty">No description yet.</p>
+{% endif %}

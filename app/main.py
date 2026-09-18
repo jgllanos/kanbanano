@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import db
+from app import db, markdown
 
 BASE_DIR = Path(__file__).parent
 
@@ -348,6 +348,7 @@ def filter_options(options: dict[str, list]) -> list[dict]:
 
 
 templates.env.filters["filter_options"] = filter_options
+templates.env.filters["markdown"] = markdown.render
 
 
 def check_color(color: str) -> None:
@@ -1015,35 +1016,54 @@ def update_card(
     card_id: int,
     request: Request,
     updated_at: Annotated[str, Form()],
-    title: Annotated[str, Form()] = "",
-    description: Annotated[str, Form()] = "",
+    title: Annotated[str | None, Form()] = None,
+    description: Annotated[str | None, Form()] = None,
     conn: sqlite3.Connection = Depends(db.get_db),
 ):
-    """Save the modal's title and description.
+    """Save the modal's title, its description, or both.
 
-    `updated_at` is the value the modal was loaded with. If the card has been
-    saved since, the save is rejected with a 409 so it doesn't overwrite that
-    edit. Returns the new card face and updated_at, swapped in out-of-band.
+    The two are separate forms, so a request normally carries one of them: the
+    title saves itself when it loses focus, while the description is saved by
+    hand, and neither should drag the other's half-finished text along with it.
+    A field that isn't sent is left as it is.
+
+    `updated_at` is the value the modal was loaded with, shared by both forms
+    (see #card-updated-at). If the card has been saved since, this save is
+    rejected with a 409 carrying the stored description and the current token,
+    so the description editor can offer to overwrite that version, take it, or
+    merge the two (see descriptionEditor in app.js).
     """
-    title = clean_text(title, "Card title")
-    description = "\n".join(description.splitlines()).strip()  # browsers send \r\n
+    # Column names come from here, not from the request.
+    changes = {}
+    if title is not None:
+        changes["title"] = clean_text(title, "Card title")
+    if description is not None:
+        changes["description"] = "\n".join(description.splitlines()).strip()  # browsers send \r\n
+    if not changes:
+        raise HTTPException(status_code=400, detail="That save was empty")
+
     with conn:
         card = load_card(conn, card_id)
-        if card["updated_at"] != updated_at:
-            raise HTTPException(
-                status_code=409,
-                detail="Someone else changed this card after you opened it. "
-                "Reload it to see their version.",
+        stale = card["updated_at"] != updated_at
+        if not stale:
+            assignments = ", ".join(f"{column} = ?" for column in changes)
+            conn.execute(
+                f"UPDATE cards SET {assignments}, updated_at = {NOW} WHERE id = ?",
+                (*changes.values(), card_id),
             )
-        conn.execute(
-            """
-            UPDATE cards
-            SET title = ?, description = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
-            WHERE id = ?
-            """,
-            (title, description, card_id),
+            db.bump_version(conn, card["board_id"])
+    if stale:
+        # Not an HTTPException: the editor needs the version it's up against,
+        # not just a message. Returned after the transaction so the rejected
+        # save leaves nothing behind.
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": "Someone else changed this card while you were editing it.",
+                "description": card["description"],
+                "updated_at": card["updated_at"],
+            },
         )
-        db.bump_version(conn, card["board_id"])
     return templates.TemplateResponse(
         request, "_card_saved.html", {"card": load_card(conn, card_id)}
     )

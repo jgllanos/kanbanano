@@ -1,3 +1,6 @@
-{# PATCH /cards/{id} response: the card face and updated_at, both out-of-band. #}
+{# PATCH /cards/{id} response: the card face, the re-rendered description and
+   updated_at, all out-of-band. #}
 {% include "_card_face_oob.html" %}
+{# Only the contents, so the Alpine bindings on the view element survive. #}
+<div hx-swap-oob="innerHTML:#card-description-view">{% include "_description.html" %}</div>
 <input type="hidden" id="card-updated-at" name="updated_at" value="{{ card.updated_at }}" hx-swap-oob="true">

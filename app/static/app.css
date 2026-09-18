@@ -761,6 +761,130 @@ button.danger:hover { background: #ffeceb; }
   font-size: 0.75rem;
 }
 
+/* ---- Card description ---- */
+
+.description-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.description { margin-bottom: 1.25rem; }
+.description-edit {
+  padding: 0.125rem 0.5rem;
+  background: rgb(9 30 66 / 0.06);
+  font-size: 0.75rem;
+}
+.description-edit:hover { background: rgb(9 30 66 / 0.12); }
+
+/* No border, no field background: the description is only editable through the
+   Edit button, so it shouldn't look like something you can type into. */
+#card-description-view { padding: 0 0.125rem; }
+.description-empty { margin: 0; color: var(--muted); }
+
+.description-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.description-actions .hint { margin: 0; }
+.description-error {
+  margin: 0.5rem 0 0;
+  color: #ae2e24;
+  font-size: 0.875rem;
+}
+
+/* ---- Description conflict ---- */
+
+/* Shown in place of Save and Cancel when someone else got there first. Their
+   version is shown as the Markdown they wrote, which is what "Keep both"
+   merges and what a person has to read to merge it. */
+.conflict {
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 6px;
+  background: #fff7d6;
+  border: 1px solid #e2b203;
+}
+.conflict-lead {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+}
+.conflict-theirs {
+  max-height: 10em;
+  margin: 0;
+  padding: 0.375rem 0.5rem;
+  overflow: auto;
+  border-radius: 4px;
+  background: rgb(9 30 66 / 0.06);
+  font-family: inherit;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+}
+.conflict-actions button { background: #fff; }
+.conflict-actions button:hover { background: rgb(9 30 66 / 0.08); }
+
+/* Rendered Markdown. A description is a note on a card rather than a document,
+   so headings stay near body size and the spacing stays tight. */
+.markdown { overflow-wrap: anywhere; } /* a long URL can't widen the modal */
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown pre,
+.markdown blockquote,
+.markdown table { margin: 0.5rem 0; }
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+.markdown h1 { font-size: 1.15rem; }
+.markdown h2 { font-size: 1.05rem; }
+.markdown ul,
+.markdown ol { padding-left: 1.5rem; }
+.markdown li { margin: 0.125rem 0; }
+.markdown a { color: #0c66e4; }
+.markdown code {
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: rgb(9 30 66 / 0.08);
+  font-size: 0.875em;
+}
+.markdown pre {
+  padding: 0.5rem 0.625rem;
+  border-radius: 6px;
+  background: rgb(9 30 66 / 0.06);
+  overflow-x: auto;
+}
+.markdown pre code { padding: 0; background: none; }
+.markdown blockquote {
+  padding-left: 0.75rem;
+  border-left: 3px solid rgb(9 30 66 / 0.2);
+  color: var(--muted);
+}
+.markdown hr { border: none; border-top: 1px solid rgb(9 30 66 / 0.15); }
+.markdown table { border-collapse: collapse; }
+.markdown th,
+.markdown td {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgb(9 30 66 / 0.15);
+  text-align: left;
+}
+
 /* ---- Checklist ---- */
 
 .checklist { margin-top: 1.25rem; }

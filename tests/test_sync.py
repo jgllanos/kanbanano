@@ -48,6 +48,40 @@ def test_description_edits_are_rejected_if_the_card_changed_underneath(client, c
     assert conn.execute("SELECT description FROM cards WHERE id = ?", (card,)).fetchone()[0] == "A"
 
 
+def test_a_rejected_save_reports_what_it_lost_to(client, conn, board):
+    """The 409 body is what the editor offers the three ways out from: their
+    version to show and merge, and the token to save against (see
+    descriptionEditor in app.js)."""
+    card = board.cards[0]
+    stale = card_updated_at(conn, card)
+    client.patch(f"/cards/{card}", data={"updated_at": stale, "description": "theirs"})
+
+    response = client.patch(f"/cards/{card}", data={"updated_at": stale, "description": "mine"})
+    body = response.json()
+
+    assert response.status_code == 409
+    assert body["description"] == "theirs"
+    assert body["updated_at"] == card_updated_at(conn, card)
+    assert isinstance(body["detail"], str)  # the message the editor shows
+
+
+def test_keeping_your_version_wins_with_the_token_from_the_conflict(client, conn, board):
+    """"Keep mine" is the same save again, against the version it lost to."""
+    card = board.cards[0]
+    stale = card_updated_at(conn, card)
+    client.patch(f"/cards/{card}", data={"updated_at": stale, "description": "theirs"})
+    conflict = client.patch(
+        f"/cards/{card}", data={"updated_at": stale, "description": "mine"}
+    ).json()
+
+    response = client.patch(
+        f"/cards/{card}", data={"updated_at": conflict["updated_at"], "description": "mine"}
+    )
+
+    assert response.status_code == 200
+    assert conn.execute("SELECT description FROM cards WHERE id = ?", (card,)).fetchone()[0] == "mine"
+
+
 def test_editing_a_deleted_card_404s(client, conn, board):
     card = board.cards[0]
     stale = card_updated_at(conn, card)

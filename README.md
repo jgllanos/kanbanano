@@ -5,7 +5,7 @@ shared password instead of user accounts.
 
 - Boards, lists and cards, with drag and drop
 - Labels and people, and a filter for both
-- Checklists on cards
+- Checklists on cards, and Markdown card descriptions
 - A lists panel for putting lists you aren't using out of the way
 - A board background: one of nine colors, any custom color, or a photo
 - An archive for cards, lists and boards, so nothing is deleted by accident

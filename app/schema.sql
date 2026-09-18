@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS cards (
     id           INTEGER PRIMARY KEY,
     list_id      INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
     title        TEXT    NOT NULL,
-    description  TEXT    NOT NULL DEFAULT '',  -- raw text; rendered as Markdown later
+    description  TEXT    NOT NULL DEFAULT '',  -- Markdown source; rendered on the way out
     position     REAL    NOT NULL,
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
     updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
