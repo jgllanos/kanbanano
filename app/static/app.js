@@ -169,13 +169,34 @@ document.addEventListener("alpine:init", () => {
     afterRequest({ successful, xhr, elt }) {
       if (successful) {
         this.error = "";
-        if (elt === this.$refs.deleteButton) this.$root.close();
+        if (elt === this.$refs.archiveButton) this.$root.close();
         return;
       }
       // A save triggered by closing the modal failed. Reopen it so the text isn't lost.
       if (!this.$root.open) this.$root.showModal();
       this.error = xhr.status ? errorMessage(xhr.status, xhr.responseText) : OFFLINE_MESSAGE;
       this.canReload = xhr.status === 409;
+    },
+  }));
+
+  // ---- Archive dialog -----------------------------------------------------
+  // GET /boards/{id}/archive swaps a <dialog> into #modal-root and it opens
+  // itself, like the card modal. Restoring or deleting swaps the body, so the
+  // dialog's own errors are shown here, and a flash message would be behind it.
+
+  Alpine.data("archiveModal", () => ({
+    error: "",
+
+    init() {
+      this.$root.showModal();
+      this.$root.addEventListener("htmx:afterRequest", ({ detail }) => {
+        const { successful, xhr } = detail;
+        if (successful) this.error = "";
+        else this.error = xhr.status ? errorMessage(xhr.status, xhr.responseText) : OFFLINE_MESSAGE;
+      });
+      this.$root.addEventListener("close", () =>
+        document.querySelector(".board-menu-open")?.focus(),
+      );
     },
   }));
 
@@ -770,6 +791,21 @@ document.addEventListener("htmx:beforeSwap", (event) => {
 
 document.addEventListener("htmx:afterSwap", (event) => {
   if (!fromPoller(event) || !restoreBoardState) return;
+  restoreBoardState();
+  restoreBoardState = null;
+});
+
+// A restore from the archive dialog sends the board with it, out-of-band, which
+// replaces the lists without going through the poller. Keep what a refresh
+// keeps, above all the sideways scroll position.
+const replacesBoard = (event) => event.detail.target?.id === "lists-container";
+
+document.addEventListener("htmx:oobBeforeSwap", (event) => {
+  if (replacesBoard(event)) restoreBoardState = snapshotBoard();
+});
+
+document.addEventListener("htmx:oobAfterSwap", (event) => {
+  if (!replacesBoard(event) || !restoreBoardState) return;
   restoreBoardState();
   restoreBoardState = null;
 });

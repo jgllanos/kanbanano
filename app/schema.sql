@@ -7,12 +7,16 @@
 -- position is REAL so a later switch to fractional indexing needs no migration.
 -- Today it always holds contiguous integers 0, 1, 2… Always ORDER BY position, id.
 
+-- archived_at, here and on lists and cards, is when the row was archived, or
+-- NULL while it's in use. Archiving replaces deleting everywhere in the UI; see
+-- db.LATE_COLUMNS for how existing databases get these columns.
 CREATE TABLE IF NOT EXISTS boards (
     id          INTEGER PRIMARY KEY,
     title       TEXT    NOT NULL,
     background  TEXT    NOT NULL DEFAULT '#0079bf',  -- '#rrggbb' or 'image:<token>', see board_images
     version     INTEGER NOT NULL DEFAULT 0,          -- bumped on every mutation, see db.bump_version
-    created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+    created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+    archived_at TEXT
 );
 
 -- An uploaded board background, at most one per board. The bytes are here
@@ -28,10 +32,11 @@ CREATE TABLE IF NOT EXISTS board_images (
 );
 
 CREATE TABLE IF NOT EXISTS lists (
-    id        INTEGER PRIMARY KEY,
-    board_id  INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
-    title     TEXT    NOT NULL,
-    position  REAL    NOT NULL
+    id           INTEGER PRIMARY KEY,
+    board_id     INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    title        TEXT    NOT NULL,
+    position     REAL    NOT NULL,
+    archived_at  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS cards (
@@ -41,7 +46,8 @@ CREATE TABLE IF NOT EXISTS cards (
     description  TEXT    NOT NULL DEFAULT '',  -- raw text; rendered as Markdown later
     position     REAL    NOT NULL,
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
-    updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+    updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+    archived_at  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS labels (

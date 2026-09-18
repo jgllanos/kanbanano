@@ -15,7 +15,7 @@ def test_pages_render(client, board):
     view = client.get(f"/boards/{board.id}")
     assert view.status_code == 200
     # The lists panel builds its items from the board, so only its frame is here.
-    for expected in ["Home", "To do", "Tap", "Add a list", "Delete board",
+    for expected in ["Home", "To do", "Tap", "Add a list", "Archive this board",
                      'id="list-rail"', "Hide this list"]:
         assert expected in view.text
 
@@ -126,9 +126,10 @@ def test_renaming_and_recoloring_leave_each_other_alone(client, conn, board):
 
 
 def test_delete_board_takes_its_lists_and_cards_with_it(client, conn, board):
+    """Deleting for good is reached from the index's archived section."""
     response = client.request("DELETE", f"/boards/{board.id}")
 
-    assert response.headers["hx-redirect"] == "/"
+    assert 'id="board-tiles"' in response.text  # the index's tiles, re-rendered
     for table in ["boards", "lists", "cards"]:
         assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
 

@@ -58,8 +58,21 @@ def connect(path: Path | None = None) -> Connection:
     return conn
 
 
+# Columns added to a table after databases already existed. schema.sql has them
+# for new databases; these bring an older one up to date.
+LATE_COLUMNS = [
+    ("boards", "archived_at", "TEXT"),
+    ("lists", "archived_at", "TEXT"),
+    ("cards", "archived_at", "TEXT"),
+]
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_PATH.read_text())
+    for table, column, column_type in LATE_COLUMNS:
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
 
 def get_db(request: Request):

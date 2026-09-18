@@ -1,0 +1,50 @@
+{# The archive's contents. Restoring or deleting swaps this whole block, so the
+   rest of the dialog stays put. #}
+<div id="archive-body" class="archive-body">
+  {% if archive.lists %}
+    <h3 class="menu-heading">Lists</h3>
+    <ul class="archive-rows">
+      {% for list in archive.lists %}
+        <li class="archive-row">
+          <span class="archive-title">{{ list.title }}</span>
+          {# Every card in the list, since archiving a list doesn't archive its cards. #}
+          <span class="archive-detail">
+            {{ list.card_count }} card{{ 's' if list.card_count != 1 }}
+          </span>
+          <button type="button" hx-post="/lists/{{ list.id }}/restore"
+                  hx-target="#archive-body" hx-swap="outerHTML">Restore</button>
+          <button type="button" class="danger" hx-delete="/lists/{{ list.id }}"
+                  hx-target="#archive-body" hx-swap="outerHTML"
+                  hx-confirm="Delete this list and its {{ list.card_count }} card{{ 's' if list.card_count != 1 }} for good? This can't be undone.">
+            Delete for good
+          </button>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if archive.cards %}
+    <h3 class="menu-heading">Cards</h3>
+    <ul class="archive-rows">
+      {% for card in archive.cards %}
+        <li class="archive-row">
+          <span class="archive-title">{{ card.title }}</span>
+          <span class="archive-detail">from {{ card.list_title }}</span>
+          <button type="button" hx-post="/cards/{{ card.id }}/restore"
+                  hx-target="#archive-body" hx-swap="outerHTML">Restore</button>
+          <button type="button" class="danger" hx-delete="/cards/{{ card.id }}"
+                  hx-target="#archive-body" hx-swap="outerHTML"
+                  hx-confirm="Delete this card for good? This can't be undone.">
+            Delete for good
+          </button>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if not archive.lists and not archive.cards %}
+    <p class="archive-empty">
+      Nothing archived. Archiving a card or a list from the board puts it here.
+    </p>
+  {% endif %}
+</div>

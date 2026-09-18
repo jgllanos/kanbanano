@@ -37,10 +37,11 @@
         <button type="button" class="focus-this" x-show="!isFocus" @click="focus()">🍅 Focus on this</button>
         <span class="focus-current" x-show="isFocus" x-cloak>🍅 You're focusing on this</span>
       </div>
-      <button type="button" class="danger" x-ref="deleteButton"
-              hx-delete="/cards/{{ card.id }}" hx-target="#card-{{ card.id }}" hx-swap="delete"
-              hx-confirm="Delete this card? This can't be undone.">
-        Delete card
+      {# No confirm: archiving is reversible from the board's archive #}
+      <button type="button" x-ref="archiveButton"
+              hx-post="/cards/{{ card.id }}/archive"
+              hx-target="#card-{{ card.id }}" hx-swap="delete">
+        Archive card
       </button>
     </div>
   </div>

@@ -8,6 +8,7 @@ shared password instead of user accounts.
 - Checklists on cards
 - A lists panel for putting lists you aren't using out of the way
 - A board background: one of nine colors, any custom color, or a photo
+- An archive for cards, lists and boards, so nothing is deleted by accident
 - A pomodoro timer
 - Changes from other people showing up within a few seconds
 

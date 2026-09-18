@@ -35,10 +35,18 @@
               @click="open = false; $store.rail.hide({{ list.id }})">
         Hide this list
       </button>
-      <button type="button" class="menu-item is-danger"
-              hx-delete="/lists/{{ list.id }}" hx-target="closest .list" hx-swap="delete"
-              hx-confirm="Delete this list and all its cards? This can't be undone.">
-        Delete list
+      {# Neither of these confirms: both are undone from the board's archive,
+         which is also the only place anything is deleted for good. Archiving
+         the list doesn't archive its cards; they come back with it. #}
+      <button type="button" class="menu-item"
+              hx-post="/lists/{{ list.id }}/archive-cards"
+              hx-target="#cards-{{ list.id }}" hx-swap="outerHTML">
+        Archive all cards
+      </button>
+      <button type="button" class="menu-item"
+              hx-post="/lists/{{ list.id }}/archive"
+              hx-target="closest .list" hx-swap="delete">
+        Archive list
       </button>
     </div>
   </div>

@@ -235,7 +235,11 @@ def load_lists(conn: sqlite3.Connection, board_id: int) -> list[dict]:
     lists = [
         dict(row)
         for row in conn.execute(
-            "SELECT id, title FROM lists WHERE board_id = ? ORDER BY position, id",
+            """
+            SELECT id, title FROM lists
+            WHERE board_id = ? AND archived_at IS NULL
+            ORDER BY position, id
+            """,
             (board_id,),
         )
     ]
@@ -245,7 +249,7 @@ def load_lists(conn: sqlite3.Connection, board_id: int) -> list[dict]:
             """
             SELECT cards.id, cards.list_id, cards.title, cards.description != '' AS has_description
             FROM cards JOIN lists ON lists.id = cards.list_id
-            WHERE lists.board_id = ?
+            WHERE lists.board_id = ? AND lists.archived_at IS NULL AND cards.archived_at IS NULL
             ORDER BY cards.position, cards.id
             """,
             (board_id,),
@@ -259,6 +263,38 @@ def load_lists(conn: sqlite3.Connection, board_id: int) -> list[dict]:
     for lst in lists:
         lst["cards"] = cards_by_list[lst["id"]]
     return lists
+
+
+# The same clock as the schema's created_at and updated_at defaults.
+NOW = "strftime('%Y-%m-%d %H:%M:%f', 'now')"
+
+
+def load_archive(conn: sqlite3.Connection, board_id: int) -> dict[str, list]:
+    """A board's archived lists and cards, newest first.
+
+    If a list is archived, all of its cards stay within the list, instead of being archived
+    individually. So we show a count for each archived list to indicate its contents.
+    """
+    lists = conn.execute(
+        """
+        SELECT id, title, archived_at,
+               (SELECT COUNT(*) FROM cards WHERE cards.list_id = lists.id) AS card_count
+        FROM lists
+        WHERE board_id = ? AND archived_at IS NOT NULL
+        ORDER BY archived_at DESC, id DESC
+        """,
+        (board_id,),
+    ).fetchall()
+    cards = conn.execute(
+        """
+        SELECT cards.id, cards.title, cards.archived_at, lists.title AS list_title
+        FROM cards JOIN lists ON lists.id = cards.list_id
+        WHERE lists.board_id = ? AND cards.archived_at IS NOT NULL
+        ORDER BY cards.archived_at DESC, cards.id DESC
+        """,
+        (board_id,),
+    ).fetchall()
+    return {"lists": lists, "cards": cards}
 
 
 def load_cards(conn: sqlite3.Connection, card_ids: Iterable[int]) -> list[dict]:
@@ -457,12 +493,26 @@ def logout(request: Request):
     return RedirectResponse("/login", status_code=303)
 
 
+def index_tiles(conn: sqlite3.Connection) -> dict[str, list]:
+    """The index's boards, and its archived ones for the section below them."""
+    boards = conn.execute(
+        """
+        SELECT id, title, background FROM boards
+        WHERE archived_at IS NULL ORDER BY created_at, id
+        """
+    ).fetchall()
+    archived = conn.execute(
+        """
+        SELECT id, title, background FROM boards
+        WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id DESC
+        """
+    ).fetchall()
+    return {"boards": boards, "archived": archived}
+
+
 @app.get("/", response_class=HTMLResponse)
 def board_index(request: Request, conn: sqlite3.Connection = Depends(db.get_db)):
-    boards = conn.execute(
-        "SELECT id, title, background FROM boards ORDER BY created_at, id"
-    ).fetchall()
-    return templates.TemplateResponse(request, "index.html", {"boards": boards})
+    return templates.TemplateResponse(request, "index.html", index_tiles(conn))
 
 
 @app.post("/boards")
@@ -539,6 +589,58 @@ def update_board(
     )
 
 
+def archive_response(request: Request, conn: sqlite3.Connection, board_id: int) -> Response:
+    """The archive dialog's contents, plus the board's lists out-of-band.
+
+    The board's lists are sent with the response because a client's own write
+    never comes back to it through a poll (see adoptVersion in app.js).
+    """
+    return templates.TemplateResponse(
+        request,
+        "_archive_refresh.html",
+        {
+            "board": load_board(conn, board_id),
+            "archive": load_archive(conn, board_id),
+            "lists": load_lists(conn, board_id),
+        },
+    )
+
+
+@app.get("/boards/{board_id}/archive", response_class=HTMLResponse)
+def board_archive(
+    board_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """The archive dialog, loaded when it's opened rather than with the board."""
+    return templates.TemplateResponse(
+        request,
+        "_archive_modal.html",
+        {"board": load_board(conn, board_id), "archive": load_archive(conn, board_id)},
+    )
+
+
+@app.post("/boards/{board_id}/archive")
+def archive_board(board_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
+    """Take a board off the index, keeping everything on it.
+    """
+    with conn:
+        load_board(conn, board_id)
+        conn.execute(f"UPDATE boards SET archived_at = {NOW} WHERE id = ?", (board_id,))
+        db.bump_version(conn, board_id)
+    return Response(status_code=204, headers={"HX-Redirect": "/"})
+
+
+@app.post("/boards/{board_id}/restore", response_class=HTMLResponse)
+def restore_board(
+    board_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """Put an archived board back on the index. Returns the index's tiles."""
+    with conn:
+        load_board(conn, board_id)
+        conn.execute("UPDATE boards SET archived_at = NULL WHERE id = ?", (board_id,))
+        db.bump_version(conn, board_id)
+    return templates.TemplateResponse(request, "_board_tiles.html", index_tiles(conn))
+
+
 @app.post("/boards/{board_id}/background", response_class=HTMLResponse)
 def upload_background(
     request: Request,
@@ -606,9 +708,11 @@ def board_background(
     )
 
 
-@app.delete("/boards/{board_id}")
-def delete_board(board_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
-    """Delete a board and everything on it, then redirect to the index.
+@app.delete("/boards/{board_id}", response_class=HTMLResponse)
+def delete_board(
+    board_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """Delete an archived board and everything on it. Returns the index's tiles.
 
     There's no version to bump once the row is gone. Other clients' polls get a
     286 instead.
@@ -616,7 +720,7 @@ def delete_board(board_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
     with conn:
         load_board(conn, board_id)
         conn.execute("DELETE FROM boards WHERE id = ?", (board_id,))
-    return Response(status_code=204, headers={"HX-Redirect": "/"})
+    return templates.TemplateResponse(request, "_board_tiles.html", index_tiles(conn))
 
 
 @app.get("/boards/{board_id}/poll", response_class=HTMLResponse)
@@ -630,10 +734,13 @@ def poll_board(
     again and no change is missed.
     """
     board = conn.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
-    if board is None:
-        # 286 tells htmx to stop polling; the message replaces the lists.
+    if board is None or board["archived_at"] is not None:
+        # 286 tells htmx to stop polling; the message replaces the lists. An
+        # archived board still renders, so this is how someone else looking at
+        # it finds out that it has left the index.
+        gone = "deleted" if board is None else "archived"
         return HTMLResponse(
-            '<div id="lists-container" class="lists board-gone">This board was deleted.</div>',
+            f'<div id="lists-container" class="lists board-gone">This board was {gone}.</div>',
             status_code=286,
         )
     if board["version"] == v:
@@ -692,13 +799,62 @@ def update_list(
 
 
 @app.delete("/lists/{list_id}", response_class=HTMLResponse)
-def delete_list(list_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
-    """Delete a list and its cards. Returns an empty 200, like delete_card."""
+def delete_list(
+    list_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """Delete an archived list and its cards for good, from the archive dialog."""
     with conn:
         lst = load_list(conn, list_id)
         conn.execute("DELETE FROM lists WHERE id = ?", (list_id,))
         db.bump_version(conn, lst["board_id"])
+    return archive_response(request, conn, lst["board_id"])
+
+
+@app.post("/lists/{list_id}/archive", response_class=HTMLResponse)
+def archive_list(list_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
+    """Take a list off the board.
+
+    Its cards aren't archived with it. The board doesn't render an archived
+    list, so they go off the board with it and come back when it does.
+    """
+    with conn:
+        lst = load_list(conn, list_id)
+        conn.execute(f"UPDATE lists SET archived_at = {NOW} WHERE id = ?", (list_id,))
+        db.bump_version(conn, lst["board_id"])
     return HTMLResponse("")
+
+
+@app.post("/lists/{list_id}/restore", response_class=HTMLResponse)
+def restore_list(
+    list_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """Put an archived list back on the board, with the cards it still holds."""
+    with conn:
+        lst = load_list(conn, list_id)
+        conn.execute("UPDATE lists SET archived_at = NULL WHERE id = ?", (list_id,))
+        db.bump_version(conn, lst["board_id"])
+    return archive_response(request, conn, lst["board_id"])
+
+
+@app.post("/lists/{list_id}/archive-cards", response_class=HTMLResponse)
+def archive_list_cards(
+    list_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """Archive every card in a list, keeping the list itself.
+
+    Returns the list's empty card container, so the board shows the result
+    without waiting for a poll.
+    """
+    with conn:
+        lst = load_list(conn, list_id)
+        conn.execute(
+            f"UPDATE cards SET archived_at = {NOW} WHERE list_id = ? AND archived_at IS NULL",
+            (list_id,),
+        )
+        db.bump_version(conn, lst["board_id"])
+    return templates.TemplateResponse(
+        request, "_cards.html", {"list": dict(lst, cards=[])}
+    )
 
 
 @app.post("/cards", response_class=HTMLResponse)
@@ -894,8 +1050,20 @@ def update_card(
 
 
 @app.delete("/cards/{card_id}", response_class=HTMLResponse)
-def delete_card(card_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
-    """Delete a card.
+def delete_card(
+    card_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """Delete an archived card for good. Returns the archive dialog's contents."""
+    with conn:
+        card = load_card(conn, card_id)
+        conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+        db.bump_version(conn, card["board_id"])
+    return archive_response(request, conn, card["board_id"])
+
+
+@app.post("/cards/{card_id}/archive", response_class=HTMLResponse)
+def archive_card(card_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
+    """Take a card off the board, keeping everything on it.
 
     Returns an empty 200 because htmx skips swapping on a 204, and the swap is
     what removes the card from the page. The gap left in the list's positions
@@ -903,9 +1071,28 @@ def delete_card(card_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
     """
     with conn:
         card = load_card(conn, card_id)
-        conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+        conn.execute(f"UPDATE cards SET archived_at = {NOW} WHERE id = ?", (card_id,))
         db.bump_version(conn, card["board_id"])
     return HTMLResponse("")
+
+
+@app.post("/cards/{card_id}/restore", response_class=HTMLResponse)
+def restore_card(
+    card_id: int, request: Request, conn: sqlite3.Connection = Depends(db.get_db)
+):
+    """Put an archived card back on its list.
+
+    Restores the list too if that's archived, so the card comes back somewhere
+    visible rather than into a column nobody can see.
+    """
+    with conn:
+        card = load_card(conn, card_id)
+        conn.execute("UPDATE cards SET archived_at = NULL WHERE id = ?", (card_id,))
+        conn.execute(
+            "UPDATE lists SET archived_at = NULL WHERE id = ?", (card["list_id"],)
+        )
+        db.bump_version(conn, card["board_id"])
+    return archive_response(request, conn, card["board_id"])
 
 
 def label_section(

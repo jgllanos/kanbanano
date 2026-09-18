@@ -19,18 +19,6 @@
     <button type="submit" class="primary">Create board</button>
   </form>
 
-  <ul class="board-tiles">
-    {% for board in boards %}
-      <li>
-        <a class="board-tile {{ 'dark-ink' if board.background | needs_dark_ink }}
-                  {{ 'has-photo' if board.background | image_token }}"
-           href="/boards/{{ board.id }}" style="background: {{ board | background_css }}">
-          {{ board.title }}
-        </a>
-      </li>
-    {% else %}
-      <li class="empty">No boards yet.</li>
-    {% endfor %}
-  </ul>
+  {% include "_board_tiles.html" %}
 </main>
 {% endblock %}

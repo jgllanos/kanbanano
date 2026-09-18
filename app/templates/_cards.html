@@ -1,0 +1,6 @@
+{# A list's cards. Its own file so archiving all of them can return it empty. #}
+<ol class="cards" id="cards-{{ list.id }}" data-list-id="{{ list.id }}" x-ref="cards">
+  {% for card in list.cards %}
+    {% include "_card.html" %}
+  {% endfor %}
+</ol>

@@ -59,11 +59,17 @@
 
   <hr class="menu-divider">
 
-  {# The confirm text doesn't name the board because renaming doesn't re-render
-     this panel. #}
-  <button type="button" class="menu-item is-danger"
-          hx-delete="/boards/{{ board.id }}"
-          hx-confirm="Delete this board and all its lists and cards? This can't be undone.">
-    Delete board
+  {# Archived cards and lists come back from here. Deleting anything for good
+     happens in that dialog. #}
+  <button type="button" class="menu-item"
+          hx-get="/boards/{{ board.id }}/archive" hx-target="#modal-root"
+          @click="open = false">
+    Archived cards and lists
+  </button>
+
+  {# No confirm: the board comes back from the index's archived section. #}
+  <button type="button" class="menu-item"
+          hx-post="/boards/{{ board.id }}/archive">
+    Archive this board
   </button>
 </div>

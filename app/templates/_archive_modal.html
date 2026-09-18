@@ -1,0 +1,18 @@
+{# The board's archive, fetched when it's opened rather than with the board.
+   Like the card modal it lives in #modal-root, outside the area polls replace,
+   and it doesn't follow other people's changes while it's open. #}
+<dialog class="card-modal archive-modal" x-data="archiveModal"
+        @mousedown.self="$root.close()" aria-labelledby="archive-heading">
+  <div class="modal-content">
+    <div class="modal-top">
+      <h2 class="modal-heading" id="archive-heading">Archive</h2>
+      <button type="button" class="modal-close" aria-label="Close" @click="$root.close()">✕</button>
+    </div>
+
+    <div class="modal-error" role="alert" x-show="error" x-cloak>
+      <span x-text="error"></span>
+    </div>
+
+    {% include "_archive_body.html" %}
+  </div>
+</dialog>

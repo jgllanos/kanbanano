@@ -1,4 +1,7 @@
-<div id="lists-container" class="lists" data-board-id="{{ board.id }}" data-version="{{ board.version }}">
+{# oob: a restore from the archive dialog sends the board along with its
+   response, because the dialog's swap target is elsewhere. #}
+<div id="lists-container" class="lists" data-board-id="{{ board.id }}" data-version="{{ board.version }}"
+     {% if oob %}hx-swap-oob="true"{% endif %}>
   {% for list in lists %}
     {% include "_list.html" %}
   {% endfor %}

@@ -1,11 +1,7 @@
 <section class="list" id="list-{{ list.id }}" data-list-id="{{ list.id }}" tabindex="0"
          x-data="boardList" @click.outside="close({ refocus: false })">
   {% include "_list_header.html" %}
-  <ol class="cards" id="cards-{{ list.id }}" data-list-id="{{ list.id }}" x-ref="cards">
-    {% for card in list.cards %}
-      {% include "_card.html" %}
-    {% endfor %}
-  </ol>
+  {% include "_cards.html" %}
 
   {# Stays in the page between cards so focus and anything typed mid-request survive. #}
   <form class="composer" x-ref="form" x-show="composing" x-cloak

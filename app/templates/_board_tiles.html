@@ -1,0 +1,41 @@
+{# The index's boards. Its own file so restoring or deleting an archived board
+   can return just this part of the page. #}
+<div id="board-tiles">
+  <ul class="board-tiles">
+    {% for board in boards %}
+      <li>
+        <a class="board-tile {{ 'dark-ink' if board.background | needs_dark_ink }}
+                  {{ 'has-photo' if board.background | image_token }}"
+           href="/boards/{{ board.id }}" style="background: {{ board | background_css }}">
+          {{ board.title }}
+        </a>
+      </li>
+    {% else %}
+      <li class="empty">No boards yet.</li>
+    {% endfor %}
+  </ul>
+
+  {# Archived boards aren't links. Opening one would work, but its poll stops
+     with "This board was archived", which is a confusing way to arrive. #}
+  {% if archived %}
+    <h2 class="archived-heading">Archived</h2>
+    <ul class="board-tiles">
+      {% for board in archived %}
+        <li class="archived-board">
+          <span class="board-tile {{ 'dark-ink' if board.background | needs_dark_ink }}
+                       {{ 'has-photo' if board.background | image_token }}"
+                style="background: {{ board | background_css }}">{{ board.title }}</span>
+          <div class="archived-actions">
+            <button type="button" hx-post="/boards/{{ board.id }}/restore"
+                    hx-target="#board-tiles" hx-swap="outerHTML">Restore</button>
+            <button type="button" class="danger" hx-delete="/boards/{{ board.id }}"
+                    hx-target="#board-tiles" hx-swap="outerHTML"
+                    hx-confirm="Delete this board and everything on it for good? This can't be undone.">
+              Delete for good
+            </button>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>

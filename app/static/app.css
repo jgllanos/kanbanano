@@ -292,6 +292,18 @@ body {
 .board-tile:hover { filter: brightness(0.92); }
 .empty { color: var(--muted); }
 
+/* Archived boards, below the tiles. They aren't links, so they don't get the
+   hover, and each carries its own restore and delete. */
+.archived-heading {
+  margin: 2rem 0 0.5rem;
+  font-size: 1rem;
+  color: var(--muted);
+}
+.archived-board { display: flex; flex-direction: column; gap: 0.5rem; }
+.archived-board .board-tile { opacity: 0.6; }
+.archived-actions { display: flex; gap: 0.5rem; }
+.archived-actions button { background: #fff; border: 1px solid rgb(9 30 66 / 0.25); }
+
 /* ---- Board view ---- */
 
 /* --board-bg, --board-ink and --board-shade are set by a <style> in the settings
@@ -674,6 +686,38 @@ button.danger:hover { background: #ffeceb; }
   color: #ae2e24;
 }
 .modal-error button { background: #fff; }
+
+/* ---- Archive dialog ---- */
+
+/* Everything archived on this board, so it can get long. */
+.archive-modal .modal-content { max-height: 70vh; overflow-y: auto; }
+.modal-heading { margin: 0; font-size: 1.1rem; }
+.archive-rows {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+.archive-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid rgb(9 30 66 / 0.12);
+}
+/* The title takes the space, so the buttons stay in a column down the right. */
+.archive-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.archive-detail {
+  color: var(--muted);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+.archive-row button { background: #fff; white-space: nowrap; }
+.archive-row button:hover { background: rgb(9 30 66 / 0.08); }
+.archive-empty { margin: 0.5rem 0 0; color: var(--muted); }
 
 .card-form textarea {
   display: block;

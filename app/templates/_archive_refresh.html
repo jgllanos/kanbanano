@@ -1,0 +1,5 @@
+{# Returned by restore or delete: the archive's contents, plus the
+   board's lists out-of-band, so the board behind the dialog catches up. A
+   client's own writes never come back to it through a poll (see adoptVersion). #}
+{% include "_archive_body.html" %}
+{% with oob=True %}{% include "_lists.html" %}{% endwith %}
