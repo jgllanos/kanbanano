@@ -3,7 +3,7 @@
 import pytest
 
 from app import db
-from app.main import needs_dark_ink
+from app.theme import needs_dark_ink
 from conftest import card_order, delete_for_good, list_order, version
 
 

@@ -8,7 +8,7 @@ import io
 
 from PIL import Image
 
-from app.main import UPLOAD_LIMIT
+from app.theme import UPLOAD_LIMIT
 from conftest import delete_for_good, version
 
 

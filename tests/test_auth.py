@@ -7,23 +7,31 @@ import pytest
 from fastapi.routing import APIRoute
 from itsdangerous import TimestampSigner
 
-from app.main import LOGIN_EXEMPT, SESSION_MAX_AGE, app
+from app.config import SESSION_MAX_AGE
+from app.main import app
+from app.routes import ROUTERS
+from app.security import LOGIN_EXEMPT
 from conftest import PASSWORD, make_client, version
 
 
 def protected_requests():
     """(method, url) for every route that needs a login, with ids filled in.
 
-    Built from the app's route table, so new routes are checked automatically.
+    Built from the routers main.py includes, so new routes are checked
+    automatically. It reads them from the routers rather than from app.routes
+    because FastAPI keeps an included router as one lazy entry there instead of
+    flattening it. That the routes really are mounted is covered by the test
+    below using these URLs: an unregistered one would answer 404, not 401.
     """
-    for route in app.routes:
-        if not isinstance(route, APIRoute) or route.path in LOGIN_EXEMPT:
-            continue
-        url = route.path
-        for param in route.param_convertors:
-            url = url.replace("{" + param + "}", "1")
-        for method in sorted(route.methods - {"HEAD"}):
-            yield method, url
+    for router in ROUTERS:
+        for route in router.routes:
+            if not isinstance(route, APIRoute) or route.path in LOGIN_EXEMPT:
+                continue
+            url = route.path
+            for param in route.param_convertors:
+                url = url.replace("{" + param + "}", "1")
+            for method in sorted(route.methods - {"HEAD"}):
+                yield method, url
 
 
 @pytest.mark.parametrize("method, url", list(protected_requests()))
