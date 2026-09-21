@@ -5,7 +5,11 @@ services:
     ports:
       # By default only this machine can connect (e.g. Tailscale Serve). Set
       # BIND_ADDRESS=0.0.0.0 in .env to serve on your LAN; see the README.
-      - "${BIND_ADDRESS:-127.0.0.1}:8000:8000"
+      #
+      # Set the port to 18001 on the outside (host), and 8000 in the container.
+      # The host port can collide with other services on the machine, so we pick
+      # a port in the range 18000-18099 to preempt any issues.
+      - "${BIND_ADDRESS:-127.0.0.1}:18001:8000"
     environment:
       BOARD_PASSWORD: ${BOARD_PASSWORD:?set BOARD_PASSWORD in .env}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}

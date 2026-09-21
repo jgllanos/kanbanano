@@ -35,8 +35,8 @@ You need Docker with the Compose plugin.
    docker compose up -d --build
    ```
 
-By default the app listens on `127.0.0.1:8000`, so only this machine can reach it.
-To reach it from other devices, either serve it on your LAN or put Tailscale Serve in
+By default the app listens on `127.0.0.1:18001`, so only this machine can reach it.
+To reach it from other devices, either serve it on your LAN or put Tailscale in
 front. Both are below.
 
 The data lives in a Docker volume called `kanbanano_data`, so it survives rebuilds.
@@ -50,7 +50,7 @@ BIND_ADDRESS=0.0.0.0
 ALLOW_HTTP=1
 ```
 
-Then run `docker compose up -d` and open `http://<server-ip>:8000`. Include the
+Then run `docker compose up -d` and open `http://<server-ip>:18001`. Include the
 `http://`: some browsers try HTTPS first if you leave it off.
 
 `BIND_ADDRESS=0.0.0.0` publishes the port on every network interface instead of
@@ -64,18 +64,43 @@ with every request and gets its holder in for a year without the password. That'
 a reasonable tradeoff on a home network where you trust every device, but not on a
 shared one.
 
-### Behind Tailscale Serve
+### Behind Tailscale
 
-With the default `BIND_ADDRESS=127.0.0.1` and `ALLOW_HTTP=0`, run:
+Both options below need the default `BIND_ADDRESS=127.0.0.1` and `ALLOW_HTTP=0`,
+and need MagicDNS and HTTPS Certificates enabled for the tailnet (Admin console →
+DNS). Without certificates, Tailscale accepts the connection and then fails the TLS
+handshake, which browsers report as an unhelpful generic error.
+
+Each device that connects needs Tailscale installed and signed in to your tailnet.
+The exact syntax has changed between Tailscale versions; check
+`tailscale serve --help` if a command doesn't work.
+
+**On the machine's own name.** The simplest form:
 
 ```sh
-tailscale serve --bg 8000
+tailscale serve --bg 18001
 ```
 
-This serves the app at `https://<machine>.<tailnet>.ts.net` to devices on your
-tailnet, with HTTPS handled by Tailscale. Each device needs Tailscale installed and
-signed in to your tailnet. The exact syntax has changed between Tailscale versions;
-check `tailscale serve --help` if that doesn't work.
+The app is then at `https://<machine>.<tailnet>.ts.net`, and it takes over the root
+of that name, so the machine can only serve one app this way.
+
+**On its own name, as a service.** Better if the machine hosts anything else:
+
+```sh
+tailscale serve --service=svc:kanbanano --bg 18001
+```
+
+This gives the app its own virtual IP and its own name,
+`https://kanbanano.<tailnet>.ts.net`, independent of the machine hosting it. It
+stays at the root of that name, so nothing here has to know about path prefixes,
+and other apps on the same machine get their own names the same way.
+
+A service needs approving in the admin console and needs its traffic allowed in the
+tailnet policy file before it will answer. `tailscale serve status` shows whether
+it's up. Note that clients need a recent Tailscale for virtual-IP services. Older clients may not resolve the name.
+
+Serving through Tailscale doesn't close the published port. The app stays reachable
+at `127.0.0.1:18001` on the host, and on the LAN too if `BIND_ADDRESS` is `0.0.0.0`.
 
 ### Moving from LAN to Tailscale
 
